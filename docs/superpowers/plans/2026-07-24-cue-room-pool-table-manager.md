@@ -27,6 +27,7 @@
 - **UI testing scope:** pure logic (money math, date math, RBAC checks, sync merge logic) gets real unit tests per the steps below. View-composition components (JSX layout wiring shadcn primitives together) are not separately unit-tested — that coverage lives in Part D's Playwright end-to-end tests instead, which exercise the actual rendered app against a real API + Postgres, closer to how the app is really used than a component snapshot would be.
 - **Independent deployability:** `apps/api`, `apps/web`, and `packages/shared` must each be buildable and shippable on their own — no app's production deploy may depend on having the whole monorepo present at runtime. `packages/shared` is consumed as source (`workspace:*`) during development for DRY, but is compiled to `dist/` and each app's build step bundles/copies its own resolved copy. See "Hosting & independent deployability" below.
 - **No placeholders:** every task below either ships working code or is explicitly marked as a manual verification step.
+- **Form-building convention (discovered during Task 4, supersedes any other wording below):** the shadcn CLI version that actually ran generated a `field.tsx` primitive kit (`FieldSet`, `FieldGroup`, `Field`, `FieldContent`, `FieldLabel`, `FieldTitle`, `FieldDescription`, `FieldError`, `FieldSeparator`) instead of the classic shadcn `Form`/`FormField`/`FormItem`/`FormLabel`/`FormMessage` context-driven pattern this plan was originally written against — `Form`/`FormField` do not exist in `apps/web/src/components/ui/`. Wherever a task below says "shadcn `Form`" or "`FormField`", read it as: use `react-hook-form`'s own `useForm()` + `Controller` (or `register`) directly (no shadcn form-context wrapper), lay fields out with `Field`/`FieldGroup`/`FieldLabel`/`FieldDescription`, and pass each field's `fieldState.error` into `FieldError`'s `errors` prop by hand (it takes `errors?: Array<{ message?: string }>`, not a context lookup). `react-hook-form` and `@hookform/resolvers` are **not yet installed** in `apps/web` — the first task that builds a real form (Task 8) must add them (`pnpm --filter @cue-room/web add react-hook-form @hookform/resolvers`) before using them.
 
 ---
 
@@ -1191,7 +1192,7 @@ git commit -m "feat(web): tanstack-query hooks over dexie for sessions/expenses/
 
 - [ ] **Step 1: Implement `DailySalesView.tsx`**
 
-Build the date-stepper header (prev/next/Today using `dateStrOf`/`parseDate` from `@cue-room/shared`), the Total/Card/Cash/Credit summary strip (computed with `useMemo` from `sessions`), and per-category groups of shadcn `Card`s — one card per resource, an inline row per session (time-based: `Input type="time"` × 2, `Input type="number"` for amount, shadcn `Select` for method, shadcn `Select` for customer gated on `useCustomers().customers.length`, delete `Button`), an "Add session" `Button` calling `addSession`, and a subtotal computed via `useMemo`. Wrap the row-level fields with `react-hook-form` (`useFieldArray` is not needed since each row commits independently on blur/change — call `updateSession(id, patch)` directly `onChange`, matching the original spec's per-field auto-save behavior; validate each patch with `SessionSchema.partial()` client-side before calling `updateSession`, showing a shadcn `Form` field error inline if invalid, e.g. Credit method with no customer selected).
+Build the date-stepper header (prev/next/Today using `dateStrOf`/`parseDate` from `@cue-room/shared`), the Total/Card/Cash/Credit summary strip (computed with `useMemo` from `sessions`), and per-category groups of shadcn `Card`s — one card per resource, an inline row per session (time-based: `Input type="time"` × 2, `Input type="number"` for amount, shadcn `Select` for method, shadcn `Select` for customer gated on `useCustomers().customers.length`, delete `Button`), an "Add session" `Button` calling `addSession`, and a subtotal computed via `useMemo`. Wrap the row-level fields with `react-hook-form` (`useFieldArray` is not needed since each row commits independently on blur/change — call `updateSession(id, patch)` directly `onChange`, matching the original spec's per-field auto-save behavior; validate each patch with `SessionSchema.partial()` client-side before calling `updateSession`, showing the error inline via `field.tsx`'s `FieldError` (not react-hook-form here — these rows commit per-field on change, not via a submitted form) if invalid, e.g. Credit method with no customer selected).
 
 - [ ] **Step 2: Implement `MonthlySalesView.tsx`**
 
@@ -1217,15 +1218,19 @@ git commit -m "feat(web): daily sales and monthly sales views"
 - Create: `apps/web/src/components/views/CreditManagementView.tsx`
 
 **Interfaces:**
-- Consumes: `useCustomers` (6), `CustomerDraftSchema`, `CreditDraftSchema` (3), shadcn `Form` (wraps react-hook-form context), `@tanstack/react-table` for the customers list.
+- Consumes: `useCustomers` (6), `CustomerDraftSchema`, `CreditDraftSchema` (3), `react-hook-form` + `@hookform/resolvers` (installed in this task — see Step 0), the `Field`/`FieldGroup`/`FieldLabel`/`FieldError` primitives from `apps/web/src/components/ui/field.tsx` (Task 4 — see "Form-building convention" in Global Constraints, not shadcn `Form`/`FormField`), `@tanstack/react-table` for the customers list.
+
+- [ ] **Step 0: Install the form dependencies (first task in the plan to need them)**
+
+Run: `pnpm --filter @cue-room/web add react-hook-form @hookform/resolvers`
 
 - [ ] **Step 1: Implement `CustomersView.tsx`**
 
-A react-hook-form form (`useForm({ resolver: zodResolver(CustomerDraftSchema) })`) with `name`/`phone` shadcn `Input`s inside shadcn `Form`/`FormField`, submitting to `addCustomer`. Below it, a `@tanstack/react-table` table (`Name | Phone | —`) over `useCustomers().customers`, each row with a delete `Button` calling `deleteCustomer`. Empty state message when there are no customers (matches the spec's copy about the Credit dropdown).
+A react-hook-form form (`useForm({ resolver: zodResolver(CustomerDraftSchema) })`) with `name`/`phone` `Input`s laid out via `FieldGroup`/`Field`/`FieldLabel`, each field's `fieldState.error` passed into `FieldError`'s `errors` prop by hand (there is no shadcn `Form` context to auto-wire this), submitting to `addCustomer`. Below it, a `@tanstack/react-table` table (`Name | Phone | —`) over `useCustomers().customers`, each row with a delete `Button` calling `deleteCustomer`. Empty state message when there are no customers (matches the spec's copy about the Credit dropdown).
 
 - [ ] **Step 2: Implement `CreditManagementView.tsx`**
 
-One shadcn `Card` per customer: name/phone, a `balanceFor(customer.id)` figure, a small react-hook-form (`resolver: zodResolver(CreditDraftSchema)`) with an amount `Input` and two submit buttons ("Give credit" → `adjustCustomer(id, date, 'CREDIT_GIVEN', amount)`, "Record payment" → `'PAYMENT_RECEIVED'`), and a `useState`-toggled expandable section listing that customer's combined history: synthesize "Table charge" rows from `useCustomers().history` filtered where the session was `method === 'Credit'` for this `customerId` (query `db.sessions` for this), merged with manual `history` entries, sorted by `date` descending.
+One shadcn `Card` per customer: name/phone, a `balanceFor(customer.id)` figure, a small react-hook-form (`resolver: zodResolver(CreditDraftSchema)`) with an amount `Input` (same manual `Field`/`FieldError` wiring as Step 1) and two submit buttons ("Give credit" → `adjustCustomer(id, date, 'CREDIT_GIVEN', amount)`, "Record payment" → `'PAYMENT_RECEIVED'`), and a `useState`-toggled expandable section listing that customer's combined history: synthesize "Table charge" rows from `useCustomers().history` filtered where the session was `method === 'Credit'` for this `customerId` (query `db.sessions` for this), merged with manual `history` entries, sorted by `date` descending.
 
 - [ ] **Step 3: Manual verification**
 
@@ -1255,7 +1260,7 @@ Same date-stepper header pattern as Daily Sales (extract a shared `<DateStepper 
 
 - [ ] **Step 2: Implement `RateManagementView.tsx`**
 
-One `Card` per category from `useRates().rates`: time-based categories get two react-hook-form-bound `Input type="number"` fields ("Rate per 60 min", "Rate per 30 min") validated by `TimeRateSchema`; the frame-based category gets one ("Rate per frame") validated by `FrameRateSchema`. Each submits (or commits on blur) to `setRate`.
+One `Card` per category from `useRates().rates`: time-based categories get two react-hook-form-bound `Input type="number"` fields ("Rate per 60 min", "Rate per 30 min") validated by `TimeRateSchema`, laid out via `Field`/`FieldLabel`/`FieldError` (per the Global Constraints "Form-building convention" — no shadcn `Form` context here either); the frame-based category gets one ("Rate per frame") validated by `FrameRateSchema`. Each submits (or commits on blur) to `setRate`.
 
 - [ ] **Step 3: Manual verification**
 
@@ -2280,7 +2285,7 @@ export function useAuth() {
 
 - [ ] **Step 4: Implement `apps/web/src/components/auth/LoginForm.tsx`**
 
-A react-hook-form (`resolver: zodResolver(LoginSchema)`) with email/password shadcn `Input`s inside shadcn `Form`, submitting to `useAuth().login`, surfacing the thrown error ("Invalid credentials") in a form-level error message.
+A react-hook-form (`resolver: zodResolver(LoginSchema)`) with email/password `Input`s laid out via `Field`/`FieldLabel`/`FieldError` (per the Global Constraints "Form-building convention" — `apps/web` has no shadcn `Form` context wrapper; wire `fieldState.error` into `FieldError` manually), submitting to `useAuth().login`, surfacing the thrown error ("Invalid credentials") in a form-level error message.
 
 - [ ] **Step 5: Wire into `App.tsx`**
 
@@ -2421,7 +2426,7 @@ const visible = items.filter(item => hasAccess(role, item.key));
 
 - [ ] **Step 2: Implement `UserManagementView.tsx`**
 
-A react-hook-form (`resolver: zodResolver(CreateUserSchema)`) with `email/password/name` `Input`s and a `role` shadcn `Select` (`OWNER | ADMIN | CASHIER`), `POST /users` via `apiFetch` with the current `accessToken`. Below it, a `@tanstack/react-table` list from `GET /users` (`Name | Email | Role`).
+A react-hook-form (`resolver: zodResolver(CreateUserSchema)`) with `email/password/name` `Input`s (via `Field`/`FieldLabel`/`FieldError`, same manual wiring as Task 8/19 — no shadcn `Form` context in this tree) and a `role` shadcn `Select` (`OWNER | ADMIN | CASHIER`), `POST /users` via `apiFetch` with the current `accessToken`. Below it, a `@tanstack/react-table` list from `GET /users` (`Name | Email | Role`).
 
 - [ ] **Step 3: Guard the route itself, not just the nav item**
 

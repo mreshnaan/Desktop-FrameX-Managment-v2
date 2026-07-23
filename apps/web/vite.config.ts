@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import path from 'node:path'
 import { defineConfig, type UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -20,4 +21,4 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
   },
-} as UserConfig)
+})

@@ -13,9 +13,10 @@ export function useRates() {
         const existing = byCategory.get(c.name);
         if (existing) return existing;
         const def = DEFAULT_RATES[c.name];
+        const defIsFrame = typeof def === 'number';
         return c.billing === 'frame'
-          ? { category: c.name, hour: null, half: null, value: def as number, updatedAt: new Date().toISOString() }
-          : { category: c.name, hour: (def as any).hour, half: (def as any).half, value: null, updatedAt: new Date().toISOString() };
+          ? { category: c.name, hour: null, half: null, value: defIsFrame ? def : 0, updatedAt: new Date().toISOString() }
+          : { category: c.name, hour: defIsFrame ? 0 : def.hour, half: defIsFrame ? 0 : def.half, value: null, updatedAt: new Date().toISOString() };
       });
     },
   });

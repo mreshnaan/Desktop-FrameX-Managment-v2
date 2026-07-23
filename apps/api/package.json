@@ -1,0 +1,33 @@
+{
+  "name": "@cue-room/api",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@cue-room/shared": "workspace:*",
+    "@prisma/client": "^5.20.0",
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "jsonwebtoken": "^9.0.2",
+    "bcrypt": "^5.1.1",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.20.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/bcrypt": "^5.0.2",
+    "@types/node": "^22.7.0"
+  }
+}

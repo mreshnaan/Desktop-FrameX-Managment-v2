@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  CASHIER
+}
+
+enum Method {
+  Cash
+  Card
+  Credit
+}
+
+enum CreditType {
+  CREDIT_GIVEN
+  PAYMENT_RECEIVED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Session {
+  id         String    @id @default(uuid())
+  category   String
+  resource   String
+  date       String
+  start      String
+  end        String
+  amount     Int
+  method     Method
+  customerId String?
+  updatedAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  @@index([date])
+  @@index([customerId])
+}
+
+model Expense {
+  id          String    @id @default(uuid())
+  date        String
+  description String
+  amount      Int
+  method      Method
+  updatedAt   DateTime  @default(now())
+  deletedAt   DateTime?
+
+  @@index([date])
+}
+
+model Customer {
+  id        String    @id @default(uuid())
+  name      String
+  phone     String    @default("")
+  updatedAt DateTime  @default(now())
+  deletedAt DateTime?
+}
+
+model CreditEntry {
+  id         String     @id @default(uuid())
+  customerId String
+  date       String
+  type       CreditType
+  amount     Int
+  updatedAt  DateTime   @default(now())
+
+  @@index([customerId])
+}
+
+model Rate {
+  category  String   @id
+  hour      Int?
+  half      Int?
+  value     Int?
+  updatedAt DateTime @default(now())
+}

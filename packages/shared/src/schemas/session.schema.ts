@@ -17,12 +17,25 @@ const sessionBaseSchema = z.object({
   deletedAt: z.string().datetime().nullable().optional(),
 });
 
+const checkCreditCustomer = (data: {
+  method: string;
+  customerId: string | null;
+}) => data.method !== 'Credit' || !!data.customerId;
+
+const creditCustomerError = {
+  message: 'A customer must be selected for Credit sessions',
+  path: ['customerId'],
+};
+
 export const SessionSchema = sessionBaseSchema.refine(
-  data => data.method !== 'Credit' || !!data.customerId,
-  { message: 'A customer must be selected for Credit sessions', path: ['customerId'] }
+  checkCreditCustomer,
+  creditCustomerError
 );
 
 export type Session = z.infer<typeof SessionSchema>;
 
-export const SessionDraftSchema = sessionBaseSchema.omit({ id: true, updatedAt: true, deletedAt: true });
+export const SessionDraftSchema = sessionBaseSchema
+  .omit({ id: true, updatedAt: true, deletedAt: true })
+  .refine(checkCreditCustomer, creditCustomerError);
+
 export type SessionDraft = z.infer<typeof SessionDraftSchema>;

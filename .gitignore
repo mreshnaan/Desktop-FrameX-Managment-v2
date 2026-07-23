@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.local
+
+# pnpm
+.pnpm-store/
+
+# Rust / Tauri
+target/
+src-tauri/target/
+
+# Prisma
+apps/api/prisma/migrations/dev.db
+
+# Playwright
+apps/e2e/test-results/
+apps/e2e/playwright-report/
+
+# SDD scratch workspace (git-ignores itself too, this is belt-and-suspenders)
+.superpowers/
+
+# editor/OS
+.vscode/
+.DS_Store
+Thumbs.db

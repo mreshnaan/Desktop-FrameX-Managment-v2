@@ -8,7 +8,7 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import { Trash2 } from 'lucide-react';
-import { CustomerDraftSchema, type Customer, type CustomerDraft } from '@cue-room/shared';
+import { CustomerDraftSchema, type Customer } from '@cue-room/shared';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,13 +33,13 @@ export default function CustomersView() {
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<CustomerDraft>({
+  } = useForm({
     resolver: zodResolver(CustomerDraftSchema),
     defaultValues: { name: '', phone: '' },
   });
 
-  async function onSubmit(data: CustomerDraft) {
-    await addCustomer({ name: data.name, phone: data.phone });
+  async function onSubmit(data: { name: string; phone?: string }) {
+    await addCustomer({ name: data.name, phone: data.phone || '' });
     reset();
   }
 

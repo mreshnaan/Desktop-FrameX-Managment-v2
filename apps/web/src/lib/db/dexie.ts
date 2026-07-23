@@ -3,6 +3,7 @@ import type { Session } from '@cue-room/shared';
 import type { Expense } from '@cue-room/shared';
 import type { Customer } from '@cue-room/shared';
 import type { CreditEntry } from '@cue-room/shared';
+import type { OutboxEntry } from '@cue-room/shared';
 
 export interface RateRow {
   category: string;
@@ -12,13 +13,8 @@ export interface RateRow {
   updatedAt: string;
 }
 
-export interface OutboxRow {
+export interface OutboxRow extends OutboxEntry {
   outboxId?: number;
-  table: 'sessions' | 'expenses' | 'customers' | 'creditEntries' | 'rates';
-  op: 'upsert' | 'delete';
-  id: string;
-  payload: Record<string, unknown>;
-  clientUpdatedAt: string;
 }
 
 export class CueRoomDB extends Dexie {

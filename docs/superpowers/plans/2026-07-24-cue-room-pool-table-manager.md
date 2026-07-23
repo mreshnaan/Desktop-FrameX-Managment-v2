@@ -688,8 +688,8 @@ export const SyncTableName = z.enum(['sessions', 'expenses', 'customers', 'credi
 export const OutboxEntrySchema = z.object({
   table: SyncTableName,
   op: z.enum(['upsert', 'delete']),
-  id: z.string().uuid(),
-  payload: z.record(z.any()),
+  id: z.string().min(1), // not always a uuid — Rate rows are keyed by category name (e.g. "8-Ball")
+  payload: z.record(z.unknown()),
   clientUpdatedAt: z.string().datetime(),
 });
 export type OutboxEntry = z.infer<typeof OutboxEntrySchema>;

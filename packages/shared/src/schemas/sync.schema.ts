@@ -6,7 +6,7 @@ export const OutboxEntrySchema = z.object({
   table: SyncTableName,
   op: z.enum(['upsert', 'delete']),
   id: z.string().uuid(),
-  payload: z.record(z.any()),
+  payload: z.record(z.unknown()),
   clientUpdatedAt: z.string().datetime(),
 });
 export type OutboxEntry = z.infer<typeof OutboxEntrySchema>;

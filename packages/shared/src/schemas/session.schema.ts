@@ -10,7 +10,7 @@ const sessionBaseSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   start: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal('')),
   end: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal('')),
-  amount: z.coerce.number().min(0),
+  amount: z.coerce.number().int().min(0),
   method: z.enum(['Cash', 'Card', 'Credit']),
   customerId: z.string().uuid().nullable(),
   updatedAt: z.string().datetime().optional(),

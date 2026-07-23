@@ -4,7 +4,7 @@ export const ExpenseSchema = z.object({
   id: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   description: z.string().min(1, 'Description is required'),
-  amount: z.coerce.number().positive('Amount must be greater than 0'),
+  amount: z.coerce.number().int().positive('Amount must be greater than 0'),
   method: z.enum(['Cash', 'Card']),
   updatedAt: z.string().datetime().optional(),
   deletedAt: z.string().datetime().nullable().optional(),

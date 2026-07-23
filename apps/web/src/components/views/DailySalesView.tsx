@@ -3,11 +3,6 @@ import { Trash2 } from 'lucide-react';
 import {
   CATEGORIES,
   SessionSchema,
-  WEEKDAYS,
-  MONTHS,
-  dateStrOf,
-  parseDate,
-  todayStr,
   formatCurrency,
   type Category,
   type Session,
@@ -15,6 +10,7 @@ import {
 } from '@cue-room/shared';
 import { useSessions } from '@/lib/hooks/useSessions';
 import { useCustomers } from '@/lib/hooks/useCustomers';
+import DateStepper from '@/components/layout/DateStepper';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -56,15 +52,9 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
     return totals;
   }, [sessions]);
 
-  function stepDate(deltaDays: number) {
-    const d = parseDate(date);
-    d.setDate(d.getDate() + deltaDays);
-    onDateChange(dateStrOf(d));
-  }
-
   return (
     <div className="flex flex-col gap-6 p-4">
-      <DateStepper date={date} onDateChange={onDateChange} onStep={stepDate} />
+      <DateStepper date={date} onDateChange={onDateChange} />
       <SummaryStrip summary={summary} />
 
       {isLoading ? (
@@ -84,36 +74,6 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function DateStepper({
-  date,
-  onDateChange,
-  onStep,
-}: {
-  date: string;
-  onDateChange: (date: string) => void;
-  onStep: (deltaDays: number) => void;
-}) {
-  const d = parseDate(date);
-  const label = `${WEEKDAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="icon" aria-label="Previous day" onClick={() => onStep(-1)}>
-          ‹
-        </Button>
-        <div className="min-w-56 text-center text-lg font-semibold">{label}</div>
-        <Button variant="outline" size="icon" aria-label="Next day" onClick={() => onStep(1)}>
-          ›
-        </Button>
-      </div>
-      <Button variant="outline" onClick={() => onDateChange(todayStr())}>
-        Today
-      </Button>
     </div>
   );
 }

@@ -151,7 +151,7 @@ function CustomerCreditCard({
             <Button type="button" variant="outline" disabled={isSubmitting} onClick={onGiveCredit}>
               Give credit
             </Button>
-            <Button type="button" disabled={isSubmitting} onClick={onRecordPayment}>
+            <Button type="button" variant="outline" disabled={isSubmitting} onClick={onRecordPayment}>
               Record payment
             </Button>
           </div>

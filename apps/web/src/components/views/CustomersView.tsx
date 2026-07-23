@@ -105,7 +105,7 @@ export default function CustomersView() {
                 <FieldError errors={errors.phone ? [errors.phone] : undefined} />
               </Field>
             </FieldGroup>
-            <Button type="submit" disabled={isSubmitting} className="self-start">
+            <Button type="submit" variant="outline" disabled={isSubmitting} className="self-start">
               Add customer
             </Button>
           </form>

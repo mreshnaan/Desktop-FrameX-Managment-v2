@@ -1,20 +1,44 @@
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { todayStr } from '@cue-room/shared';
+import { AppShell } from './components/layout/AppShell';
+import type { BusinessViewKey } from './components/layout/Sidebar';
+import DailySalesView from './components/views/DailySalesView';
+import MonthlySalesView from './components/views/MonthlySalesView';
+import CustomersView from './components/views/CustomersView';
+import CreditManagementView from './components/views/CreditManagementView';
+import ExpensesView from './components/views/ExpensesView';
+import RateManagementView from './components/views/RateManagementView';
 
-function App() {
-  const [count, setCount] = useState(0)
+const queryClient = new QueryClient();
+
+export default function App() {
+  const [view, setView] = useState<BusinessViewKey>('dailySales');
+  const [date, setDate] = useState(todayStr());
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-xl flex-col items-center justify-center gap-6 px-6 text-center">
-      <h1 className="text-4xl">Cue Room</h1>
-      <p className="text-muted-foreground">
-        Edit <code>src/App.tsx</code> and save to test HMR
-      </p>
-      <Button onClick={() => setCount((count) => count + 1)}>
-        Count is {count}
-      </Button>
-    </main>
-  )
+    <QueryClientProvider client={queryClient}>
+      <AppShell
+        view={view}
+        onViewChange={setView}
+        sidebarOpen={sidebarOpen}
+        onSidebarOpenChange={setSidebarOpen}
+      >
+        {view === 'dailySales' && <DailySalesView date={date} onDateChange={setDate} />}
+        {view === 'monthlySales' && (
+          <MonthlySalesView
+            onJumpToDate={(d) => {
+              setDate(d);
+              setView('dailySales');
+            }}
+          />
+        )}
+        {view === 'customers' && <CustomersView />}
+        {view === 'creditManagement' && <CreditManagementView />}
+        {view === 'expenses' && <ExpensesView date={date} onDateChange={setDate} />}
+        {view === 'rateManagement' && <RateManagementView />}
+      </AppShell>
+    </QueryClientProvider>
+  );
 }
-
-export default App

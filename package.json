@@ -1,0 +1,13 @@
+{
+  "name": "cue-room",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter @cue-room/web dev",
+    "dev:api": "pnpm --filter @cue-room/api dev",
+    "build:web": "pnpm --filter @cue-room/web build",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

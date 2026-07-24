@@ -48,6 +48,9 @@ importers:
       '@types/node':
         specifier: ^22.7.0
         version: 22.20.1
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       prisma:
         specifier: ^5.20.0
         version: 5.22.0
@@ -155,18 +158,6 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@24.13.3)(jsdom@29.1.1)
 
-  apps/e2e:
-    devDependencies:
-      '@cue-room/api':
-        specifier: workspace:*
-        version: link:../api
-      '@playwright/test':
-        specifier: ^1.48.0
-        version: 1.61.1
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
-
   apps/web:
     dependencies:
       '@base-ui/react':
@@ -218,6 +209,9 @@ importers:
         specifier: ^3.23.0
         version: 3.25.76
     devDependencies:
+      '@playwright/test':
+        specifier: ^1.48.0
+        version: 1.61.1
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3)(@types/react@19.2.17)(react-dom@19.2.8)(react@19.2.8)
@@ -233,6 +227,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.3
         version: 6.0.4(vite@8.1.5)
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       fake-indexeddb:
         specifier: ^6.2.5
         version: 6.2.5

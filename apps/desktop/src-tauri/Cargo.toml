@@ -1,0 +1,26 @@
+[package]
+name = "cue-room-desktop"
+version = "0.1.0"
+description = "Cue Room desktop app"
+edition = "2021"
+
+[lib]
+name = "cue_room_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "uuid", "chrono"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+keyring = "3"
+thiserror = "2"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

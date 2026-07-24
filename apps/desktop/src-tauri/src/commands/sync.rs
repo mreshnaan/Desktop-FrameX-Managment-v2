@@ -1,0 +1,251 @@
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sqlx::{Sqlite, SqlitePool, Transaction};
+use tauri::State;
+
+// Inserts the outbox row in the SAME transaction as the caller's table
+// write -- this is the concrete correctness improvement over apps/web's
+// Dexie outbox (a local write and its outbox-enqueue there are two
+// separate, non-atomic operations; here a crash rolls back either both or
+// neither). See the desktop design spec's Architecture section.
+pub async fn enqueue_outbox_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    table: &str,
+    op: &str,
+    entity_id: &str,
+    payload: &Value,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO outbox (table_name, op, entity_id, payload_json, client_updated_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(table)
+    .bind(op)
+    .bind(entity_id)
+    .bind(payload.to_string())
+    .bind(Utc::now().to_rfc3339())
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct OutboxEntryRow {
+    pub id: i64,
+    pub table_name: String,
+    pub op: String,
+    pub entity_id: String,
+    pub payload_json: String,
+    pub client_updated_at: String,
+}
+
+// Called by the TS sync engine (see apps/desktop's syncEngine.ts) before
+// POSTing to /sync/push -- TS owns the HTTP call and timer/online-listener
+// orchestration, Rust only owns the SQLite read/write.
+#[tauri::command]
+pub async fn drain_outbox(pool: State<'_, SqlitePool>) -> Result<Vec<OutboxEntryRow>, String> {
+    sqlx::query_as::<_, OutboxEntryRow>(
+        "SELECT id, table_name, op, entity_id, payload_json, client_updated_at FROM outbox ORDER BY id",
+    )
+    .fetch_all(pool.inner())
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_outbox_entries(
+    pool: State<'_, SqlitePool>,
+    ids: Vec<i64>,
+) -> Result<(), String> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    for id in ids {
+        sqlx::query("DELETE FROM outbox WHERE id = ?")
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    tx.commit().await.map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PulledRow {
+    pub table: String,
+    pub row: Value,
+}
+
+// Applies pulled rows from GET /sync/pull. categories/stations always
+// overwrite (server-authoritative reference data, no updatedAt column --
+// see the design spec); every other table applies last-write-wins by
+// comparing updatedAt, matching apps/web's syncEngine.ts mergeIncoming().
+#[tauri::command]
+pub async fn apply_pulled_rows(
+    pool: State<'_, SqlitePool>,
+    rows: Vec<PulledRow>,
+) -> Result<(), String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    for entry in rows {
+        apply_one(&mut tx, &entry.table, &entry.row)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    tx.commit().await.map_err(|e| e.to_string())
+}
+
+async fn apply_one(
+    tx: &mut Transaction<'_, Sqlite>,
+    table: &str,
+    row: &Value,
+) -> Result<(), sqlx::Error> {
+    let id = row["id"].as_str().unwrap_or_default().to_string();
+
+    match table {
+        "categories" => {
+            sqlx::query(
+                "INSERT INTO categories (id, name, billing_type) VALUES (?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET name = excluded.name, billing_type = excluded.billing_type",
+            )
+            .bind(&id)
+            .bind(row["name"].as_str().unwrap_or_default())
+            .bind(row["billingType"].as_str().unwrap_or_default())
+            .execute(&mut **tx)
+            .await?;
+        }
+        "stations" => {
+            sqlx::query(
+                "INSERT INTO stations (id, category_id, name) VALUES (?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET category_id = excluded.category_id, name = excluded.name",
+            )
+            .bind(&id)
+            .bind(row["categoryId"].as_str().unwrap_or_default())
+            .bind(row["name"].as_str().unwrap_or_default())
+            .execute(&mut **tx)
+            .await?;
+        }
+        "rates" => {
+            if !is_newer(tx, "rates", &id, row).await? {
+                return Ok(());
+            }
+            sqlx::query(
+                "INSERT INTO rates (id, category_id, hour_rate, half_rate, frame_rate, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET category_id = excluded.category_id, hour_rate = excluded.hour_rate,
+                   half_rate = excluded.half_rate, frame_rate = excluded.frame_rate, updated_at = excluded.updated_at",
+            )
+            .bind(&id)
+            .bind(row["categoryId"].as_str().unwrap_or_default())
+            .bind(row["hour"].as_i64())
+            .bind(row["half"].as_i64())
+            .bind(row["value"].as_i64())
+            .bind(row["updatedAt"].as_str().unwrap_or_default())
+            .execute(&mut **tx)
+            .await?;
+        }
+        "customers" => {
+            if !is_newer(tx, "customers", &id, row).await? {
+                return Ok(());
+            }
+            sqlx::query(
+                "INSERT INTO customers (id, name, phone, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET name = excluded.name, phone = excluded.phone,
+                   updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
+            )
+            .bind(&id)
+            .bind(row["name"].as_str().unwrap_or_default())
+            .bind(row["phone"].as_str().unwrap_or_default())
+            .bind(row["updatedAt"].as_str().unwrap_or_default())
+            .bind(row["deletedAt"].as_str())
+            .execute(&mut **tx)
+            .await?;
+        }
+        "sessions" => {
+            if !is_newer(tx, "sessions", &id, row).await? {
+                return Ok(());
+            }
+            sqlx::query(
+                "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET station_id = excluded.station_id, date = excluded.date,
+                   start = excluded.start, \"end\" = excluded.\"end\", amount = excluded.amount,
+                   method = excluded.method, customer_id = excluded.customer_id,
+                   updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
+            )
+            .bind(&id)
+            .bind(row["stationId"].as_str().unwrap_or_default())
+            .bind(row["date"].as_str().unwrap_or_default())
+            .bind(row["start"].as_str().unwrap_or_default())
+            .bind(row["end"].as_str().unwrap_or_default())
+            .bind(row["amount"].as_i64().unwrap_or(0))
+            .bind(row["method"].as_str().unwrap_or_default())
+            .bind(row["customerId"].as_str())
+            .bind(row["updatedAt"].as_str().unwrap_or_default())
+            .bind(row["deletedAt"].as_str())
+            .execute(&mut **tx)
+            .await?;
+        }
+        "expenses" => {
+            if !is_newer(tx, "expenses", &id, row).await? {
+                return Ok(());
+            }
+            sqlx::query(
+                "INSERT INTO expenses (id, date, description, amount, method, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET date = excluded.date, description = excluded.description,
+                   amount = excluded.amount, method = excluded.method, updated_at = excluded.updated_at,
+                   deleted_at = excluded.deleted_at",
+            )
+            .bind(&id)
+            .bind(row["date"].as_str().unwrap_or_default())
+            .bind(row["description"].as_str().unwrap_or_default())
+            .bind(row["amount"].as_i64().unwrap_or(0))
+            .bind(row["method"].as_str().unwrap_or_default())
+            .bind(row["updatedAt"].as_str().unwrap_or_default())
+            .bind(row["deletedAt"].as_str())
+            .execute(&mut **tx)
+            .await?;
+        }
+        "creditEntries" => {
+            if !is_newer(tx, "credit_entries", &id, row).await? {
+                return Ok(());
+            }
+            sqlx::query(
+                "INSERT INTO credit_entries (id, customer_id, date, type, amount, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET customer_id = excluded.customer_id, date = excluded.date,
+                   type = excluded.type, amount = excluded.amount, updated_at = excluded.updated_at",
+            )
+            .bind(&id)
+            .bind(row["customerId"].as_str().unwrap_or_default())
+            .bind(row["date"].as_str().unwrap_or_default())
+            .bind(row["type"].as_str().unwrap_or_default())
+            .bind(row["amount"].as_i64().unwrap_or(0))
+            .bind(row["updatedAt"].as_str().unwrap_or_default())
+            .execute(&mut **tx)
+            .await?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+// Last-write-wins: skip the incoming row if the local row is already at
+// least as new. sqlite_table is the actual table name (snake_case), which
+// differs from the sync wire-format table name for credit_entries.
+async fn is_newer(
+    tx: &mut Transaction<'_, Sqlite>,
+    sqlite_table: &str,
+    id: &str,
+    row: &Value,
+) -> Result<bool, sqlx::Error> {
+    let query = format!("SELECT updated_at FROM {sqlite_table} WHERE id = ?");
+    let existing: Option<(String,)> = sqlx::query_as(&query)
+        .bind(id)
+        .fetch_optional(&mut **tx)
+        .await?;
+    let Some((existing_updated_at,)) = existing else {
+        return Ok(true);
+    };
+    let incoming_updated_at = row["updatedAt"].as_str().unwrap_or_default();
+    Ok(incoming_updated_at > existing_updated_at.as_str())
+}

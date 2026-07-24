@@ -1,0 +1,146 @@
+import { invoke } from '@tauri-apps/api/core';
+
+export interface CategoryRow {
+  id: string;
+  name: string;
+  billingType: 'time' | 'frame';
+}
+
+export interface StationRow {
+  id: string;
+  categoryId: string;
+  name: string;
+}
+
+export interface RateRow {
+  id: string;
+  categoryId: string;
+  hourRate: number | null;
+  halfRate: number | null;
+  frameRate: number | null;
+  updatedAt: string;
+}
+
+export interface CustomerRow {
+  id: string;
+  name: string;
+  phone: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface SessionRow {
+  id: string;
+  stationId: string;
+  date: string;
+  start: string;
+  end: string;
+  amount: number;
+  method: 'Cash' | 'Card' | 'Credit';
+  customerId: string | null;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface SessionPatch {
+  start?: string;
+  end?: string;
+  amount?: number;
+  method?: string;
+  customerId?: string | null;
+}
+
+export interface ExpenseRow {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  method: 'Cash' | 'Card';
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface CreditEntryRow {
+  id: string;
+  customerId: string;
+  date: string;
+  type: 'CREDIT_GIVEN' | 'PAYMENT_RECEIVED';
+  amount: number;
+  updatedAt: string;
+}
+
+export interface OutboxEntryRow {
+  id: number;
+  tableName: string;
+  op: 'upsert' | 'delete';
+  entityId: string;
+  payloadJson: string;
+  clientUpdatedAt: string;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface PulledRow {
+  table: string;
+  row: Record<string, unknown>;
+}
+
+// Thin typed wrappers over Tauri's invoke() -- the only place in the TS
+// codebase that talks to the Rust backend. Every call here corresponds 1:1
+// to a #[tauri::command] in apps/desktop/src-tauri/src/.
+export const commands = {
+  // Auth (src-tauri/src/auth.rs) -- tokens live in the OS keychain, never
+  // in localStorage.
+  storeAuthTokens: (accessToken: string, refreshToken: string) =>
+    invoke<void>('store_auth_tokens', { accessToken, refreshToken }),
+  getAuthTokens: () => invoke<AuthTokens | null>('get_auth_tokens'),
+  clearAuthTokens: () => invoke<void>('clear_auth_tokens'),
+
+  // Categories/stations (read-only, populated by sync)
+  listCategories: () => invoke<CategoryRow[]>('list_categories'),
+  listStations: () => invoke<StationRow[]>('list_stations'),
+
+  // Rates
+  listRates: () => invoke<RateRow[]>('list_rates'),
+  upsertRate: (
+    categoryId: string,
+    hourRate: number | null,
+    halfRate: number | null,
+    frameRate: number | null,
+  ) => invoke<RateRow>('upsert_rate', { categoryId, hourRate, halfRate, frameRate }),
+
+  // Customers
+  listCustomers: () => invoke<CustomerRow[]>('list_customers'),
+  createCustomer: (name: string, phone: string) => invoke<CustomerRow>('create_customer', { name, phone }),
+  deleteCustomer: (id: string) => invoke<void>('delete_customer', { id }),
+
+  // Sessions
+  listAllSessions: () => invoke<SessionRow[]>('list_all_sessions'),
+  listSessionsBetween: (startDate: string, endDate: string) =>
+    invoke<SessionRow[]>('list_sessions_between', { startDate, endDate }),
+  listSessionsForDate: (date: string) => invoke<SessionRow[]>('list_sessions_for_date', { date }),
+  createSession: (stationId: string, categoryId: string, billingType: string, date: string) =>
+    invoke<SessionRow>('create_session', { stationId, categoryId, billingType, date }),
+  updateSession: (id: string, patch: SessionPatch) => invoke<SessionRow>('update_session', { id, patch }),
+  deleteSession: (id: string) => invoke<void>('delete_session', { id }),
+
+  // Expenses
+  listExpensesForDate: (date: string) => invoke<ExpenseRow[]>('list_expenses_for_date', { date }),
+  createExpense: (date: string) => invoke<ExpenseRow>('create_expense', { date }),
+  updateExpense: (id: string, description?: string, amount?: number, method?: string) =>
+    invoke<ExpenseRow>('update_expense', { id, description, amount, method }),
+  deleteExpense: (id: string) => invoke<void>('delete_expense', { id }),
+
+  // Credit entries
+  listCreditEntries: () => invoke<CreditEntryRow[]>('list_credit_entries'),
+  createCreditEntry: (customerId: string, date: string, entryType: string, amount: number) =>
+    invoke<CreditEntryRow>('create_credit_entry', { customerId, date, entryType, amount }),
+
+  // Sync
+  drainOutbox: () => invoke<OutboxEntryRow[]>('drain_outbox'),
+  deleteOutboxEntries: (ids: number[]) => invoke<void>('delete_outbox_entries', { ids }),
+  applyPulledRows: (rows: PulledRow[]) => invoke<void>('apply_pulled_rows', { rows }),
+};

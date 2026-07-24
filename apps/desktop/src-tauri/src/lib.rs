@@ -1,0 +1,51 @@
+mod auth;
+mod commands;
+mod db;
+mod models;
+mod money;
+
+use tauri::Manager;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .setup(|app| {
+            let handle = app.handle().clone();
+            tauri::async_runtime::block_on(async move {
+                let pool = db::init_pool(&handle)
+                    .await
+                    .expect("failed to initialize sqlite database");
+                handle.manage(pool);
+            });
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            auth::store_auth_tokens,
+            auth::get_auth_tokens,
+            auth::clear_auth_tokens,
+            commands::categories::list_categories,
+            commands::stations::list_stations,
+            commands::rates::list_rates,
+            commands::rates::upsert_rate,
+            commands::customers::list_customers,
+            commands::customers::create_customer,
+            commands::customers::delete_customer,
+            commands::sessions::list_all_sessions,
+            commands::sessions::list_sessions_between,
+            commands::sessions::list_sessions_for_date,
+            commands::sessions::create_session,
+            commands::sessions::update_session,
+            commands::sessions::delete_session,
+            commands::expenses::list_expenses_for_date,
+            commands::expenses::create_expense,
+            commands::expenses::update_expense,
+            commands::expenses::delete_expense,
+            commands::credit_entries::list_credit_entries,
+            commands::credit_entries::create_credit_entry,
+            commands::sync::drain_outbox,
+            commands::sync::delete_outbox_entries,
+            commands::sync::apply_pulled_rows,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

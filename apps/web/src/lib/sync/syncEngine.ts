@@ -1,7 +1,7 @@
 import type { Table } from 'dexie';
 import type { QueryClient } from '@tanstack/react-query';
 import { db, type RateRow } from '../db/dexie';
-import { apiFetch } from '../api/client';
+import { apiFetch, ApiError } from '../api/client';
 import type { Session, Expense, Customer, CreditEntry } from '@/lib/shared';
 
 const CURSOR_KEY = 'cue-room-sync-cursor';
@@ -58,23 +58,54 @@ async function pull(accessToken: string) {
   localStorage.setItem(CURSOR_KEY, result.serverTime);
 }
 
-export function startSyncEngine(accessToken: string, queryClient: QueryClient): () => void {
+export function startSyncEngine(
+  accessToken: string,
+  queryClient: QueryClient,
+  // Called when a cycle fails with a 401 (expired access token). Returns a
+  // fresh access token, or null if the refresh token itself is gone/expired
+  // (in which case the app logs the user out). Optional so that older callers
+  // and tests that don't need recovery keep working unchanged.
+  refreshAccessToken?: () => Promise<string | null>,
+): () => void {
   let stopped = false;
+
+  async function runOnce(token: string) {
+    await push(token);
+    await pull(token);
+    // mergeIncoming() above writes straight into Dexie -- it doesn't go
+    // through any of the addX/updateX hook functions, so nothing has told
+    // React Query that the underlying data changed. Every local mutation
+    // hook (useCustomers, useSessions, useExpenses, ...) calls
+    // invalidateQueries() itself after writing, but incoming sync data
+    // has no equivalent caller, so without this the UI would silently
+    // never reflect changes pulled from another device until an
+    // unrelated action happened to refetch the same query.
+    await queryClient.invalidateQueries();
+  }
+
   async function cycle() {
     if (stopped || !navigator.onLine) return;
     try {
-      await push(accessToken);
-      await pull(accessToken);
-      // mergeIncoming() above writes straight into Dexie -- it doesn't go
-      // through any of the addX/updateX hook functions, so nothing has told
-      // React Query that the underlying data changed. Every local mutation
-      // hook (useCustomers, useSessions, useExpenses, ...) calls
-      // invalidateQueries() itself after writing, but incoming sync data
-      // has no equivalent caller, so without this the UI would silently
-      // never reflect changes pulled from another device until an
-      // unrelated action happened to refetch the same query.
-      await queryClient.invalidateQueries();
+      await runOnce(accessToken);
     } catch (e) {
+      // An expired access token (15 min after login) surfaces here as a 401.
+      // Without recovery, sync would silently die for the rest of the shift.
+      // Refresh the token and retry the cycle once with the new one. Updating
+      // AuthContext state inside refreshAccessToken also restarts this engine
+      // (App.tsx useEffect keyed on accessToken), so a fresh engine takes over
+      // with the new token -- the internal retry just makes recovery immediate
+      // and independently testable.
+      if (e instanceof ApiError && e.status === 401 && refreshAccessToken) {
+        const fresh = await refreshAccessToken();
+        if (fresh && !stopped) {
+          try {
+            await runOnce(fresh);
+          } catch (retryErr) {
+            console.warn('sync cycle failed after token refresh', retryErr);
+          }
+        }
+        return;
+      }
       console.warn('sync cycle failed', e);
     }
   }

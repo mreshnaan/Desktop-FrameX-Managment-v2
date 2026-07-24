@@ -78,11 +78,16 @@ function AuthenticatedApp() {
 }
 
 function Gate() {
-  const { state } = useAuth();
+  const { state, refreshAccessToken } = useAuth();
 
   useEffect(() => {
     if (!state.accessToken) return;
-    return startSyncEngine(state.accessToken, queryClient);
+    return startSyncEngine(state.accessToken, queryClient, refreshAccessToken);
+    // refreshAccessToken is intentionally omitted from deps: it is redefined
+    // every render, and re-keying on it would needlessly tear down/restart the
+    // sync engine. The engine only needs the currently-valid closure, which it
+    // captures at start time; the token itself is the meaningful dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.accessToken]);
 
   return state.user ? <AuthenticatedApp /> : <LoginForm />;

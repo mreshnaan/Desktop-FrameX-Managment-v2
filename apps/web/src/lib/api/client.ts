@@ -1,5 +1,17 @@
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
+// Carries the HTTP status alongside the message so callers can distinguish an
+// expired-token 401 (recoverable via refresh) from other failures. Extends
+// Error, so existing `instanceof Error` / `.message` consumers are unaffected.
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   opts: RequestInit & { accessToken?: string | null } = {},
@@ -23,7 +35,7 @@ export async function apiFetch<T = unknown>(
         return undefined;
       })
       .catch(() => undefined);
-    throw new Error(message ?? `API ${path} failed: ${res.status}`);
+    throw new ApiError(res.status, message ?? `API ${path} failed: ${res.status}`);
   }
   return res.json() as Promise<T>;
 }

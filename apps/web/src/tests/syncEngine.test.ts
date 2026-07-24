@@ -167,6 +167,73 @@ describe('syncEngine', () => {
     expect(remaining).toHaveLength(1);
   });
 
+  it('recovers from an expired access token: on a 401 it refreshes and retries the cycle with the new token', async () => {
+    // This is the regression guard for the real production bug: 15 min after
+    // login the access token expires, every push/pull 401s, and (before this
+    // fix) the engine just console.warn'd forever -- sync silently dead for the
+    // rest of the shift. Now a 401 triggers a refresh + retry with the fresh
+    // token, so the outbox actually drains.
+    const id = crypto.randomUUID();
+    await enqueueOutbox('customers', 'upsert', id, { id, name: 'Ravi' });
+
+    const authHeaders: (string | undefined)[] = [];
+    const fetchMock = vi.fn(async (url: string, opts: RequestInit) => {
+      const auth = (opts.headers as Record<string, string> | undefined)?.Authorization;
+      if (String(url).includes('/sync/push')) {
+        authHeaders.push(auth);
+        // The original (expired) token is rejected; the refreshed one works.
+        if (auth === 'Bearer expired-token') {
+          return new Response(JSON.stringify({ error: 'Invalid or expired token' }), { status: 401 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      }
+      // /sync/pull
+      return new Response(
+        JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], serverTime: '2026-07-24T00:00:00.000Z' }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const refreshAccessToken = vi.fn(async () => 'fresh-token');
+
+    const stop = startSyncEngine('expired-token', queryClient, refreshAccessToken);
+    await vi.waitFor(async () => {
+      const remaining = await db.outbox.toArray();
+      expect(remaining).toHaveLength(0);
+    });
+    stop();
+
+    // Refresh was attempted exactly once, and the retry push carried the new token.
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(authHeaders[0]).toBe('Bearer expired-token');
+    expect(authHeaders).toContain('Bearer fresh-token');
+    // Cursor advanced -> the retried pull actually completed after refresh.
+    expect(localStorage.getItem(CURSOR_KEY)).toBe('2026-07-24T00:00:00.000Z');
+  });
+
+  it('logs the user out (refresh returns null) without crashing the cycle when the refresh token is also dead', async () => {
+    const id = crypto.randomUUID();
+    await enqueueOutbox('customers', 'upsert', id, { id, name: 'Ravi' });
+
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: 'expired' }), { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Simulates a refresh token that is itself expired -> AuthContext logs out
+    // and returns null.
+    const refreshAccessToken = vi.fn(async () => null);
+
+    const stop = startSyncEngine('expired-token', queryClient, refreshAccessToken);
+    await vi.waitFor(() => {
+      expect(refreshAccessToken).toHaveBeenCalled();
+    });
+    stop();
+
+    // Outbox is preserved (nothing pushed) and no unhandled rejection occurred.
+    const remaining = await db.outbox.toArray();
+    expect(remaining).toHaveLength(1);
+  });
+
   it('returns a cleanup function that stops the interval and removes the online listener', () => {
     const addSpy = vi.spyOn(window, 'addEventListener');
     const removeSpy = vi.spyOn(window, 'removeEventListener');

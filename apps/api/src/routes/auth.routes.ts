@@ -11,11 +11,11 @@ authRouter.post('/login', async (req, res) => {
     return;
   }
   try {
-    const result = await login(parsed.data.email, parsed.data.password);
+    const result = await login(parsed.data.username, parsed.data.password);
     res.json(result);
   } catch (err) {
     // login() only throws this exact message for a genuine auth failure (unknown
-    // email or wrong password) -- see auth.service.ts. Anything else (DB outage,
+    // username or wrong password) -- see auth.service.ts. Anything else (DB outage,
     // an unexpected exception, etc.) is a real infrastructure problem and must
     // not be reported to the client as "your credentials are wrong". We log it
     // server-side and return 500 without leaking internal error details.

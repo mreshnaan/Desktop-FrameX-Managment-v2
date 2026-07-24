@@ -15,9 +15,9 @@ describe('login', () => {
     const passwordHash = await hashPassword('correct-horse-battery');
     const now = new Date();
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
-      id: 'u1', email: 'owner@cueroom.test', passwordHash, name: 'Owner', role: 'OWNER', createdAt: now, updatedAt: now,
+      id: 'u1', username: 'owner', passwordHash, name: 'Owner', role: 'OWNER', createdAt: now, updatedAt: now,
     });
-    const result = await login('owner@cueroom.test', 'correct-horse-battery');
+    const result = await login('owner', 'correct-horse-battery');
     expect(result.accessToken).toBeTypeOf('string');
     expect(result.user.role).toBe('OWNER');
   });
@@ -26,14 +26,14 @@ describe('login', () => {
     const passwordHash = await hashPassword('correct-horse-battery');
     const now = new Date();
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
-      id: 'u1', email: 'owner@cueroom.test', passwordHash, name: 'Owner', role: 'OWNER', createdAt: now, updatedAt: now,
+      id: 'u1', username: 'owner', passwordHash, name: 'Owner', role: 'OWNER', createdAt: now, updatedAt: now,
     });
-    await expect(login('owner@cueroom.test', 'wrong')).rejects.toThrow('Invalid credentials');
+    await expect(login('owner', 'wrong')).rejects.toThrow('Invalid credentials');
   });
 
-  it('rejects an unknown email', async () => {
+  it('rejects an unknown username', async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
-    await expect(login('nobody@cueroom.test', 'whatever')).rejects.toThrow('Invalid credentials');
+    await expect(login('nobody', 'whatever')).rejects.toThrow('Invalid credentials');
   });
 });
 
@@ -43,14 +43,14 @@ describe('refreshToken', () => {
   it('issues a fresh access token for a valid refresh token', async () => {
     const now = new Date();
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
-      id: 'u1', email: 'owner@cueroom.test', passwordHash: 'x', name: 'Owner', role: 'OWNER', createdAt: now, updatedAt: now,
+      id: 'u1', username: 'owner', passwordHash: 'x', name: 'Owner', role: 'OWNER', createdAt: now, updatedAt: now,
     });
     const token = signRefreshToken({ sub: 'u1' });
 
     const result = await refreshToken(token);
 
     expect(result.accessToken).toBeTypeOf('string');
-    expect(result.user).toEqual({ id: 'u1', email: 'owner@cueroom.test', name: 'Owner', role: 'OWNER' });
+    expect(result.user).toEqual({ id: 'u1', username: 'owner', name: 'Owner', role: 'OWNER' });
     // Looked the user up by the subject embedded in the refresh token.
     expect(prisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 'u1' } });
   });

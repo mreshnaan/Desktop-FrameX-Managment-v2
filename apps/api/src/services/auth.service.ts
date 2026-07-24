@@ -3,8 +3,8 @@ import { verifyPassword } from '../lib/password';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../lib/jwt';
 import type { Role } from '../shared/index';
 
-export async function login(email: string, password: string) {
-  const user = await prisma.user.findUnique({ where: { email } });
+export async function login(username: string, password: string) {
+  const user = await prisma.user.findUnique({ where: { username } });
   if (!user) throw new Error('Invalid credentials');
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) throw new Error('Invalid credentials');
@@ -12,7 +12,7 @@ export async function login(email: string, password: string) {
   return {
     accessToken: signAccessToken({ sub: user.id, role: user.role as Role }),
     refreshToken: signRefreshToken({ sub: user.id }),
-    user: { id: user.id, email: user.email, name: user.name, role: user.role as Role },
+    user: { id: user.id, username: user.username, name: user.name, role: user.role as Role },
   };
 }
 
@@ -32,6 +32,6 @@ export async function refreshToken(token: string) {
 
   return {
     accessToken: signAccessToken({ sub: user.id, role: user.role as Role }),
-    user: { id: user.id, email: user.email, name: user.name, role: user.role as Role },
+    user: { id: user.id, username: user.username, name: user.name, role: user.role as Role },
   };
 }

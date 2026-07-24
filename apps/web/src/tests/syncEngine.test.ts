@@ -60,6 +60,44 @@ describe('syncEngine', () => {
     expect(localStorage.getItem(CURSOR_KEY)).toBe('2026-07-24T00:00:00.000Z');
   });
 
+  it('keeps only the outbox entries the server reported as failed, and deletes the rest, on a 200 with a partial `failed` list', async () => {
+    // Reproduces the real bug: a 200 response isolates a bad/transiently-failing
+    // entry in `failed` instead of failing the whole batch, but push() used to
+    // unconditionally bulkDelete every pending entry on any 200 -- silently and
+    // permanently losing the failed entry's data instead of retrying it later.
+    const okId = crypto.randomUUID();
+    const failId = crypto.randomUUID();
+    await enqueueOutbox('customers', 'upsert', okId, { id: okId, name: 'Applied Ok' });
+    await enqueueOutbox('customers', 'upsert', failId, { id: failId, name: 'Transient Fail' });
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/sync/push')) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            failed: [{ id: failId, table: 'customers', error: 'transient DB blip' }],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], serverTime: '2026-07-24T00:00:00.000Z' }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stop = startSyncEngine('test-token', queryClient);
+    await vi.waitFor(async () => {
+      expect(localStorage.getItem(CURSOR_KEY)).toBe('2026-07-24T00:00:00.000Z');
+    });
+    stop();
+
+    const remaining = await db.outbox.toArray();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe(failId);
+  });
+
   it('does not clear the outbox when the push request fails', async () => {
     const id = crypto.randomUUID();
     await enqueueOutbox('customers', 'upsert', id, { id, name: 'Ravi' });

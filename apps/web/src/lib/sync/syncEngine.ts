@@ -24,6 +24,17 @@ interface PullResult {
   serverTime: string;
 }
 
+interface PushFailure {
+  id: string;
+  table: string;
+  error: string;
+}
+
+interface PushResult {
+  ok: true;
+  failed: PushFailure[];
+}
+
 async function push(accessToken: string) {
   const pending = await db.outbox.toArray();
   if (pending.length === 0) return;
@@ -34,8 +45,18 @@ async function push(accessToken: string) {
     payload: p.payload,
     clientUpdatedAt: p.clientUpdatedAt,
   }));
-  await apiFetch('/sync/push', { method: 'POST', accessToken, body: JSON.stringify({ entries }) });
-  await db.outbox.bulkDelete(pending.map((p) => p.outboxId!));
+  const result = await apiFetch<PushResult>('/sync/push', {
+    method: 'POST',
+    accessToken,
+    body: JSON.stringify({ entries }),
+  });
+  // Only clear outbox rows the server actually applied. Entries reported in
+  // `failed` (e.g. a transient DB blip on one upsert) must stay in the
+  // outbox so the next 30s cycle retries them -- deleting them unconditionally
+  // on any 200 would silently and permanently lose that entry's data.
+  const failedKeys = new Set((result.failed ?? []).map((f) => `${f.table}:${f.id}`));
+  const toDelete = pending.filter((p) => !failedKeys.has(`${p.table}:${p.id}`));
+  await db.outbox.bulkDelete(toDelete.map((p) => p.outboxId!));
 }
 
 async function mergeIncoming<K extends keyof TableRowMap>(table: K, rows: TableRowMap[K][]) {

@@ -18,11 +18,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) setState(JSON.parse(raw));
+    if (!raw) return;
+    try {
+      setState(JSON.parse(raw));
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+    }
   }, []);
 
   async function login(email: string, password: string) {
-    const result = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    const result = await apiFetch<{ user: AuthUser; accessToken: string; refreshToken: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
     const next: AuthState = { user: result.user, accessToken: result.accessToken };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     localStorage.setItem('cue-room-refresh', result.refreshToken);

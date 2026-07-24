@@ -1,6 +1,9 @@
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
-export async function apiFetch(path: string, opts: RequestInit & { accessToken?: string | null } = {}) {
+export async function apiFetch<T = unknown>(
+  path: string,
+  opts: RequestInit & { accessToken?: string | null } = {},
+): Promise<T> {
   const { accessToken, headers, ...rest } = opts;
   const res = await fetch(`${API_BASE}${path}`, {
     ...rest,
@@ -22,5 +25,5 @@ export async function apiFetch(path: string, opts: RequestInit & { accessToken?:
       .catch(() => undefined);
     throw new Error(message ?? `API ${path} failed: ${res.status}`);
   }
-  return res.json();
+  return res.json() as Promise<T>;
 }

@@ -1,0 +1,10 @@
+{
+  "name": "@cue-room/e2e",
+  "private": true,
+  "scripts": { "test:e2e": "playwright test --pass-with-no-tests" },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@cue-room/api": "workspace:*",
+    "dotenv": "^17.4.2"
+  }
+}

@@ -15,7 +15,21 @@ import ExpensesView from './components/views/ExpensesView';
 import RateManagementView from './components/views/RateManagementView';
 import UserManagementView from './components/views/UserManagementView';
 
-const queryClient = new QueryClient();
+// networkMode defaults to 'online' in TanStack Query, which pauses queries
+// and mutations whenever the browser is offline -- even ones whose queryFn
+// never touches the network (every view here reads/writes local Dexie
+// tables). That silently broke the offline-first claim: local writes landed
+// in IndexedDB immediately (enqueueOutbox works offline), but the UI never
+// re-rendered to show them because the invalidated query stayed "paused"
+// until connectivity returned. 'always' makes queries/mutations run
+// unconditionally, which is correct for state whose real backing store is
+// local-first Dexie, not the network.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { networkMode: 'always' },
+    mutations: { networkMode: 'always' },
+  },
+});
 
 function AuthenticatedApp() {
   const { state } = useAuth();
@@ -68,7 +82,7 @@ function Gate() {
 
   useEffect(() => {
     if (!state.accessToken) return;
-    return startSyncEngine(state.accessToken);
+    return startSyncEngine(state.accessToken, queryClient);
   }, [state.accessToken]);
 
   return state.user ? <AuthenticatedApp /> : <LoginForm />;

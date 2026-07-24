@@ -100,7 +100,7 @@ function ExpenseRow({
   }
 
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-border p-2">
+    <div className="flex flex-col gap-1 rounded-lg border border-border p-2" data-testid="expense-row">
       <div className="flex flex-wrap items-center gap-2">
         <Input
           value={descriptionDraft}

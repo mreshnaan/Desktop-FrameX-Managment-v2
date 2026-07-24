@@ -1,16 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
+import { QueryClient } from '@tanstack/react-query';
 import { db, enqueueOutbox } from '../lib/db/dexie';
 import { startSyncEngine } from '../lib/sync/syncEngine';
 
 const CURSOR_KEY = 'cue-room-sync-cursor';
 
 describe('syncEngine', () => {
+  let queryClient: QueryClient;
+
   beforeEach(async () => {
     await db.outbox.clear();
     await db.customers.clear();
     localStorage.removeItem(CURSOR_KEY);
     vi.stubGlobal('navigator', { onLine: true });
+    queryClient = new QueryClient();
   });
 
   afterEach(() => {
@@ -39,7 +43,7 @@ describe('syncEngine', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const stop = startSyncEngine('test-token');
+    const stop = startSyncEngine('test-token', queryClient);
     // cycle() runs async fire-and-forget inside startSyncEngine; wait for it to settle.
     await vi.waitFor(async () => {
       const remaining = await db.outbox.toArray();
@@ -68,7 +72,7 @@ describe('syncEngine', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const stop = startSyncEngine('test-token');
+    const stop = startSyncEngine('test-token', queryClient);
     // Give the fire-and-forget cycle() a tick to run and fail.
     await new Promise((r) => setTimeout(r, 10));
     stop();
@@ -109,7 +113,7 @@ describe('syncEngine', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const stop = startSyncEngine('test-token');
+    const stop = startSyncEngine('test-token', queryClient);
     await vi.waitFor(() => {
       expect(localStorage.getItem(CURSOR_KEY)).toBe('2026-07-24T00:00:00.000Z');
     });
@@ -121,6 +125,31 @@ describe('syncEngine', () => {
     expect(row2?.name).toBe('Stale Local');
   });
 
+  it('invalidates React Query after a successful pull, so data merged in from another device is actually rendered', async () => {
+    // mergeIncoming() writes straight into Dexie -- unlike every local
+    // mutation hook (useCustomers, useSessions, ...), it has no caller to
+    // invalidate the corresponding query, so without this the UI would
+    // never reflect changes pulled from another device.
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/sync/push')) {
+        return new Response(JSON.stringify({}), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], serverTime: '2026-07-24T00:00:00.000Z' }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stop = startSyncEngine('test-token', queryClient);
+    await vi.waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalled();
+    });
+    stop();
+  });
+
   it('does not run a sync cycle when offline', async () => {
     vi.stubGlobal('navigator', { onLine: false });
     const id = crypto.randomUUID();
@@ -129,7 +158,7 @@ describe('syncEngine', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    const stop = startSyncEngine('test-token');
+    const stop = startSyncEngine('test-token', queryClient);
     await new Promise((r) => setTimeout(r, 10));
     stop();
 
@@ -143,7 +172,7 @@ describe('syncEngine', () => {
     const removeSpy = vi.spyOn(window, 'removeEventListener');
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })));
 
-    const stop = startSyncEngine('test-token');
+    const stop = startSyncEngine('test-token', queryClient);
     expect(addSpy).toHaveBeenCalledWith('online', expect.any(Function));
     const onlineHandler = addSpy.mock.calls.find((c) => c[0] === 'online')?.[1];
 

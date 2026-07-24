@@ -1,4 +1,5 @@
 import type { Table } from 'dexie';
+import type { QueryClient } from '@tanstack/react-query';
 import { db, type RateRow } from '../db/dexie';
 import { apiFetch } from '../api/client';
 import type { Session, Expense, Customer, CreditEntry } from '@/lib/shared';
@@ -57,13 +58,22 @@ async function pull(accessToken: string) {
   localStorage.setItem(CURSOR_KEY, result.serverTime);
 }
 
-export function startSyncEngine(accessToken: string): () => void {
+export function startSyncEngine(accessToken: string, queryClient: QueryClient): () => void {
   let stopped = false;
   async function cycle() {
     if (stopped || !navigator.onLine) return;
     try {
       await push(accessToken);
       await pull(accessToken);
+      // mergeIncoming() above writes straight into Dexie -- it doesn't go
+      // through any of the addX/updateX hook functions, so nothing has told
+      // React Query that the underlying data changed. Every local mutation
+      // hook (useCustomers, useSessions, useExpenses, ...) calls
+      // invalidateQueries() itself after writing, but incoming sync data
+      // has no equivalent caller, so without this the UI would silently
+      // never reflect changes pulled from another device until an
+      // unrelated action happened to refetch the same query.
+      await queryClient.invalidateQueries();
     } catch (e) {
       console.warn('sync cycle failed', e);
     }

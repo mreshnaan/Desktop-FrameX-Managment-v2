@@ -87,9 +87,12 @@ describe('desktop syncEngine', () => {
     });
     stop();
 
+    // categories before customers -- TABLES is dependency-ordered so a
+    // fresh/empty local db never applies a row before the table it
+    // references (see syncEngine.ts's TABLES comment).
     expect(applyPulledRows).toHaveBeenCalledWith([
-      { table: 'customers', row: { id: 'c1', name: 'Ravi', phone: '', updatedAt: '2026-07-24T00:00:00.000Z', deletedAt: null } },
       { table: 'categories', row: { id: 'cat-1', name: '8-Ball', billingType: 'time' } },
+      { table: 'customers', row: { id: 'c1', name: 'Ravi', phone: '', updatedAt: '2026-07-24T00:00:00.000Z', deletedAt: null } },
     ]);
   });
 

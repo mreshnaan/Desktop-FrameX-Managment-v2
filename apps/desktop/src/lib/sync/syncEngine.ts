@@ -3,8 +3,16 @@ import { commands, type PulledRow } from '../tauri/commands';
 import { apiFetch, ApiError } from '../api/client';
 
 const CURSOR_KEY = 'cue-room-desktop-sync-cursor';
+// Order matters here: SQLite enforces foreign keys, so a table must be
+// applied strictly after every table it references, or apply_pulled_rows
+// fails outright on a genuinely empty local database (e.g. a fresh
+// install's first bootstrap pull) -- verified directly via the e2e suite,
+// not assumed: categories/stations/productCategories have no dependencies
+// and must go first; rates/sessions/products depend on them; orderItems/
+// stockMovements depend on orders/products in turn.
 const TABLES = [
-  'sessions', 'expenses', 'customers', 'creditEntries', 'rates', 'categories', 'stations',
+  'categories', 'stations', 'rates',
+  'customers', 'sessions', 'expenses', 'creditEntries',
   'productCategories', 'products', 'orders', 'orderItems', 'stockMovements',
 ] as const;
 

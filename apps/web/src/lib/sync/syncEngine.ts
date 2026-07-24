@@ -5,7 +5,11 @@ import { apiFetch, ApiError } from '../api/client';
 import type { Session, Expense, Customer, CreditEntry } from '@/lib/shared';
 
 const CURSOR_KEY = 'cue-room-sync-cursor';
-const TABLES = ['sessions', 'expenses', 'customers', 'creditEntries', 'rates', 'categories', 'stations'] as const;
+// Dexie/IndexedDB doesn't enforce foreign keys, so this ordering isn't
+// functionally required here the way it is for apps/desktop's SQLite --
+// kept dependency-ordered anyway for consistency with that fix (categories
+// before stations/rates, which reference it).
+const TABLES = ['categories', 'stations', 'rates', 'sessions', 'expenses', 'customers', 'creditEntries'] as const;
 
 // categories/stations have no updatedAt column (server-seeded reference data,
 // no client ever edits them -- see apps/api's schema migration) so

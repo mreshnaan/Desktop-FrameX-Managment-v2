@@ -12,8 +12,9 @@ describe('login', () => {
 
   it('returns tokens for correct credentials', async () => {
     const passwordHash = await hashPassword('correct-horse-battery');
-    (prisma.user.findUnique as any).mockResolvedValue({
-      id: 'u1', email: 'owner@cueroom.test', passwordHash, name: 'Owner', role: 'OWNER',
+    const now = new Date();
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'u1', email: 'owner@cueroom.test', passwordHash, name: 'Owner', role: 'OWNER', createdAt: now, updatedAt: now,
     });
     const result = await login('owner@cueroom.test', 'correct-horse-battery');
     expect(result.accessToken).toBeTypeOf('string');
@@ -22,14 +23,15 @@ describe('login', () => {
 
   it('rejects a wrong password', async () => {
     const passwordHash = await hashPassword('correct-horse-battery');
-    (prisma.user.findUnique as any).mockResolvedValue({
-      id: 'u1', email: 'owner@cueroom.test', passwordHash, name: 'Owner', role: 'OWNER',
+    const now = new Date();
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'u1', email: 'owner@cueroom.test', passwordHash, name: 'Owner', role: 'OWNER', createdAt: now, updatedAt: now,
     });
     await expect(login('owner@cueroom.test', 'wrong')).rejects.toThrow('Invalid credentials');
   });
 
   it('rejects an unknown email', async () => {
-    (prisma.user.findUnique as any).mockResolvedValue(null);
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
     await expect(login('nobody@cueroom.test', 'whatever')).rejects.toThrow('Invalid credentials');
   });
 });

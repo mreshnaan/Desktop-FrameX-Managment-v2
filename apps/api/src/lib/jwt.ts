@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../env.js';
-import type { Role } from '@prisma/client';
+import type { Role } from '@cue-room/shared';
 
 export interface AccessTokenPayload { sub: string; role: Role }
 

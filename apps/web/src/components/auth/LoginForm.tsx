@@ -18,13 +18,13 @@ export default function LoginForm() {
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({
     resolver: zodResolver(LoginSchema),
-    defaultValues: { email: '', password: '' },
+    defaultValues: { username: '', password: '' },
   });
 
   async function onSubmit(data: LoginInput) {
     setFormError(null);
     try {
-      await login(data.email, data.password);
+      await login(data.username, data.password);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Invalid credentials');
     }
@@ -40,16 +40,16 @@ export default function LoginForm() {
           <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="login-email">Email</FieldLabel>
+                <FieldLabel htmlFor="login-username">Username</FieldLabel>
                 <Input
-                  id="login-email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="you@example.com"
-                  aria-invalid={!!errors.email}
-                  {...register('email')}
+                  id="login-username"
+                  type="text"
+                  autoComplete="username"
+                  placeholder="username"
+                  aria-invalid={!!errors.username}
+                  {...register('username')}
                 />
-                <FieldError errors={errors.email ? [errors.email] : undefined} />
+                <FieldError errors={errors.username ? [errors.username] : undefined} />
               </Field>
               <Field>
                 <FieldLabel htmlFor="login-password">Password</FieldLabel>

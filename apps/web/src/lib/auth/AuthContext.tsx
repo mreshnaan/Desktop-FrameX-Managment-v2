@@ -2,12 +2,12 @@ import { createContext, useEffect, useState, type ReactNode } from 'react';
 import type { Role } from '@/lib/shared';
 import { apiFetch } from '../api/client';
 
-interface AuthUser { id: string; email: string; name: string; role: Role }
+interface AuthUser { id: string; username: string; name: string; role: Role }
 interface AuthState { user: AuthUser | null; accessToken: string | null }
 
 export const AuthContext = createContext<{
   state: AuthState;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   // Exchanges the stored refresh token for a fresh access token, updating both
   // React state and localStorage. Returns the new access token on success, or
@@ -32,10 +32,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  async function login(email: string, password: string) {
+  async function login(username: string, password: string) {
     const result = await apiFetch<{ user: AuthUser; accessToken: string; refreshToken: string }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ username, password }),
     });
     const next: AuthState = { user: result.user, accessToken: result.accessToken };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));

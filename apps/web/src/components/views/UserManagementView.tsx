@@ -33,7 +33,7 @@ import {
 
 interface UserRow {
   id: string;
-  email: string;
+  username: string;
   name: string;
   role: Role;
 }
@@ -42,7 +42,7 @@ const columnHelper = createColumnHelper<UserRow>();
 
 const columns = [
   columnHelper.accessor('name', { header: 'Name' }),
-  columnHelper.accessor('email', { header: 'Email' }),
+  columnHelper.accessor('username', { header: 'Username' }),
   columnHelper.accessor('role', { header: 'Role' }),
 ];
 
@@ -65,7 +65,7 @@ export default function UserManagementView() {
     formState: { errors, isSubmitting },
   } = useForm<CreateUserInput>({
     resolver: zodResolver(CreateUserSchema),
-    defaultValues: { email: '', password: '', name: '', role: 'CASHIER' },
+    defaultValues: { username: '', password: '', name: '', role: 'CASHIER' },
   });
 
   async function onSubmit(data: CreateUserInput) {
@@ -109,16 +109,16 @@ export default function UserManagementView() {
                 <FieldError errors={errors.name ? [errors.name] : undefined} />
               </Field>
               <Field>
-                <FieldLabel htmlFor="user-email">Email</FieldLabel>
+                <FieldLabel htmlFor="user-username">Username</FieldLabel>
                 <Input
-                  id="user-email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="you@example.com"
-                  aria-invalid={!!errors.email}
-                  {...register('email')}
+                  id="user-username"
+                  type="text"
+                  autoComplete="username"
+                  placeholder="username"
+                  aria-invalid={!!errors.username}
+                  {...register('username')}
                 />
-                <FieldError errors={errors.email ? [errors.email] : undefined} />
+                <FieldError errors={errors.username ? [errors.username] : undefined} />
               </Field>
               <Field>
                 <FieldLabel htmlFor="user-password">Password</FieldLabel>

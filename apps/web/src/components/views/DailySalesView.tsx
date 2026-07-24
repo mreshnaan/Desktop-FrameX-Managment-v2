@@ -54,6 +54,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
 
   return (
     <div className="flex flex-col gap-6 p-4">
+      <h1 className="text-xl font-semibold">Daily Sales</h1>
       <DateStepper date={date} onDateChange={onDateChange} />
       <SummaryStrip summary={summary} />
 
@@ -93,7 +94,12 @@ function SummaryStrip({ summary }: { summary: Summary }) {
           <CardHeader>
             <CardTitle className="text-sm text-muted-foreground">{item.label}</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{formatCurrency(item.value)}</CardContent>
+          <CardContent
+            className="text-2xl font-semibold"
+            data-testid={`summary-${item.label.toLowerCase()}`}
+          >
+            {formatCurrency(item.value)}
+          </CardContent>
         </Card>
       ))}
     </div>
@@ -156,7 +162,7 @@ function ResourceCard({
   const subtotal = useMemo(() => sessions.reduce((sum, s) => sum + s.amount, 0), [sessions]);
 
   return (
-    <Card>
+    <Card data-testid={`resource-card-${category.name}-${resource}`}>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>{resource}</CardTitle>
         <span className="text-sm font-medium text-muted-foreground">{formatCurrency(subtotal)}</span>
@@ -219,7 +225,7 @@ function SessionRow({
   }
 
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-border p-2">
+    <div className="flex flex-col gap-1 rounded-lg border border-border p-2" data-testid="session-row">
       <div className="flex flex-wrap items-center gap-2">
         {billing === 'time' ? (
           <>

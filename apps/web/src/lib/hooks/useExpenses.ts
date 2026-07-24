@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { db, enqueueOutbox } from '../db/dexie';
-import type { Expense } from '@cue-room/shared';
+import type { Expense } from '@/lib/shared';
 
 export function useExpenses(date: string) {
   const qc = useQueryClient();

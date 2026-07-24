@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { db, enqueueOutbox } from '../db/dexie';
-import { CATEGORIES, calcTimeAmount, calcFrameAmount, type Session } from '@cue-room/shared';
+import { CATEGORIES, calcTimeAmount, calcFrameAmount, type Session } from '@/lib/shared';
 
 async function loadRate(category: string) {
   return db.rates.get(category);

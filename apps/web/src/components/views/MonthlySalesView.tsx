@@ -14,7 +14,7 @@ import {
   parseDate,
   formatCurrency,
   type Session,
-} from '@cue-room/shared';
+} from '@/lib/shared';
 import { db } from '@/lib/db/dexie';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

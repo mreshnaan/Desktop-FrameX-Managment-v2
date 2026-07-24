@@ -3,7 +3,6 @@ RUN corepack enable
 WORKDIR /repo
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @cue-room/shared build
 RUN pnpm --filter @cue-room/web build
 
 FROM nginx:1.27-alpine AS runtime

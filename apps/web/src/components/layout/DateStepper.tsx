@@ -1,4 +1,4 @@
-import { WEEKDAYS, MONTHS, dateStrOf, parseDate, todayStr } from '@cue-room/shared';
+import { WEEKDAYS, MONTHS, dateStrOf, parseDate, todayStr } from '@/lib/shared';
 import { Button } from '@/components/ui/button';
 
 interface DateStepperProps {

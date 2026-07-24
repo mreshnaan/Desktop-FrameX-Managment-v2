@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { ExpenseDraftSchema, formatCurrency, type Expense } from '@cue-room/shared';
+import { ExpenseDraftSchema, formatCurrency, type Expense } from '@/lib/shared';
 import { useExpenses } from '@/lib/hooks/useExpenses';
 import DateStepper from '@/components/layout/DateStepper';
 import { Button } from '@/components/ui/button';

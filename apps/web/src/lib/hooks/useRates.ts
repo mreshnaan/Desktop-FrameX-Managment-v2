@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { db, enqueueOutbox, type RateRow } from '../db/dexie';
-import { CATEGORIES, DEFAULT_RATES } from '@cue-room/shared';
+import { CATEGORIES, DEFAULT_RATES } from '@/lib/shared';
 
 export function useRates() {
   const qc = useQueryClient();

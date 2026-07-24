@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../env.js';
-import type { Role } from '@cue-room/shared';
+import type { Role } from '../shared/index.js';
 
 export interface AccessTokenPayload { sub: string; role: Role }
 

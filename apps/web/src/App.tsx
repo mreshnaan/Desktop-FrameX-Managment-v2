@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { todayStr } from '@cue-room/shared';
+import { todayStr } from '@/lib/shared';
 import { AppShell } from './components/layout/AppShell';
 import type { BusinessViewKey } from './components/layout/Sidebar';
 import DailySalesView from './components/views/DailySalesView';

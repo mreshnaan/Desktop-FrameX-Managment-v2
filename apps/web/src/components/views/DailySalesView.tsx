@@ -7,7 +7,7 @@ import {
   type Category,
   type Session,
   type Customer,
-} from '@cue-room/shared';
+} from '@/lib/shared';
 import { useSessions } from '@/lib/hooks/useSessions';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import DateStepper from '@/components/layout/DateStepper';

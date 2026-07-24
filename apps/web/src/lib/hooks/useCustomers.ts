@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { db, enqueueOutbox } from '../db/dexie';
-import type { Customer, CreditEntry } from '@cue-room/shared';
-import { calcCustomerBalance } from '@cue-room/shared';
+import type { Customer, CreditEntry } from '@/lib/shared';
+import { calcCustomerBalance } from '@/lib/shared';
 
 export function useCustomers() {
   const qc = useQueryClient();

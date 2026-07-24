@@ -1,5 +1,5 @@
 import type { Response, NextFunction } from 'express';
-import { hasAccess, type ViewKey } from '@cue-room/shared';
+import { hasAccess, type ViewKey } from '../shared/index.js';
 import type { AuthedRequest } from './auth.js';
 
 export function requireView(view: ViewKey) {

@@ -6,7 +6,7 @@ import {
   FrameRateSchema,
   type TimeRateInput,
   type FrameRateInput,
-} from '@cue-room/shared';
+} from '@/lib/shared';
 import { useRates } from '@/lib/hooks/useRates';
 import type { RateRow } from '@/lib/db/dexie';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

@@ -1,7 +1,7 @@
 import { prisma } from '../db.js';
 import { verifyPassword } from '../lib/password.js';
 import { signAccessToken, signRefreshToken } from '../lib/jwt.js';
-import type { Role } from '@cue-room/shared';
+import type { Role } from '../shared/index.js';
 
 export async function login(email: string, password: string) {
   const user = await prisma.user.findUnique({ where: { email } });

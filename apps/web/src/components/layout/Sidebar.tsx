@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import { Calendar, BarChart3, Users, CreditCard, Receipt, Settings } from 'lucide-react';
-import type { ViewKey } from '@cue-room/shared';
+import type { ViewKey } from '@/lib/shared';
 import {
   Sidebar as SidebarPrimitive,
   SidebarContent,

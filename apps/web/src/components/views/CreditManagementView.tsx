@@ -10,7 +10,7 @@ import {
   type CreditDraft,
   type CreditEntry,
   type Session,
-} from '@cue-room/shared';
+} from '@/lib/shared';
 import { db } from '@/lib/db/dexie';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { Button } from '@/components/ui/button';

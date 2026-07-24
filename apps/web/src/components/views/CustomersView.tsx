@@ -8,7 +8,7 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import { Trash2 } from 'lucide-react';
-import { CustomerDraftSchema, type Customer } from '@cue-room/shared';
+import { CustomerDraftSchema, type Customer } from '@/lib/shared';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

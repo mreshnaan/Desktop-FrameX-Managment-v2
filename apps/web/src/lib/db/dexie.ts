@@ -1,9 +1,9 @@
 import Dexie, { type Table } from 'dexie';
-import type { Session } from '@cue-room/shared';
-import type { Expense } from '@cue-room/shared';
-import type { Customer } from '@cue-room/shared';
-import type { CreditEntry } from '@cue-room/shared';
-import type { OutboxEntry } from '@cue-room/shared';
+import type { Session } from '@/lib/shared';
+import type { Expense } from '@/lib/shared';
+import type { Customer } from '@/lib/shared';
+import type { CreditEntry } from '@/lib/shared';
+import type { OutboxEntry } from '@/lib/shared';
 
 export interface RateRow {
   category: string;

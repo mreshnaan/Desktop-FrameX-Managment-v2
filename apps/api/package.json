@@ -11,7 +11,6 @@
     "prisma:generate": "prisma generate"
   },
   "dependencies": {
-    "@cue-room/shared": "workspace:*",
     "@prisma/client": "^5.20.0",
     "express": "^4.21.0",
     "cors": "^2.8.5",

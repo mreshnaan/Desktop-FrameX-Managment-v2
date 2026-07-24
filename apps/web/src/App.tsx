@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { todayStr } from '@/lib/shared';
 import { AuthProvider } from '@/lib/auth/AuthContext';
 import { useAuth } from '@/lib/auth/useAuth';
+import { startSyncEngine } from '@/lib/sync/syncEngine';
 import LoginForm from '@/components/auth/LoginForm';
 import { AppShell } from './components/layout/AppShell';
 import type { BusinessViewKey } from './components/layout/Sidebar';
@@ -46,6 +47,12 @@ function AuthenticatedApp() {
 
 function Gate() {
   const { state } = useAuth();
+
+  useEffect(() => {
+    if (!state.accessToken) return;
+    return startSyncEngine(state.accessToken);
+  }, [state.accessToken]);
+
   return state.user ? <AuthenticatedApp /> : <LoginForm />;
 }
 

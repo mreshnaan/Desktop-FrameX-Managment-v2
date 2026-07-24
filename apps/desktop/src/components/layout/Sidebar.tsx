@@ -1,7 +1,19 @@
 import type { ComponentType } from 'react';
-import { Calendar, BarChart3, Users, CreditCard, Receipt, Settings, ShieldCheck } from 'lucide-react';
-import { hasAccess, type ViewKey } from '@/lib/shared';
+import {
+  Calendar,
+  BarChart3,
+  Users,
+  CreditCard,
+  Receipt,
+  Settings,
+  ShieldCheck,
+  KeyRound,
+  LayoutGrid,
+  DatabaseBackup,
+} from 'lucide-react';
+import { hasPermission, type PermissionKey as ViewKey } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
+import { Logo } from '@/components/branding/Logo';
 import {
   Sidebar as SidebarPrimitive,
   SidebarContent,
@@ -35,6 +47,9 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'expenses', label: 'Expenses', icon: Receipt },
   { key: 'rateManagement', label: 'Rate Management', icon: Settings },
   { key: 'userManagement', label: 'User Management', icon: ShieldCheck },
+  { key: 'roleManagement', label: 'Roles', icon: KeyRound },
+  { key: 'categoryManagement', label: 'Categories & Stations', icon: LayoutGrid },
+  { key: 'backupRestore', label: 'Backup & Restore', icon: DatabaseBackup },
 ];
 
 interface AppSidebarProps {
@@ -44,15 +59,13 @@ interface AppSidebarProps {
 
 export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
   const { state } = useAuth();
-  const role = state.user?.role;
-  const visibleItems = role ? NAV_ITEMS.filter(item => hasAccess(role, item.key)) : [];
+  const permissions = state.user?.permissions;
+  const visibleItems = permissions ? NAV_ITEMS.filter(item => hasPermission(permissions, item.key)) : [];
 
   return (
     <SidebarPrimitive collapsible="icon">
       <SidebarHeader>
-        <div className="truncate px-2 py-1 text-lg font-semibold group-data-[collapsible=icon]:hidden">
-          Cue Room
-        </div>
+        <Logo className="px-2 py-1" />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

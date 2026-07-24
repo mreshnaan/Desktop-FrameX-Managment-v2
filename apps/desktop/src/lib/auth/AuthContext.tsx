@@ -1,9 +1,14 @@
 import { createContext, useEffect, useState, type ReactNode } from 'react';
-import type { Role } from '@/lib/shared';
 import { apiFetch } from '../api/client';
 import { commands } from '../tauri/commands';
 
-interface AuthUser { id: string; username: string; name: string; role: Role }
+interface AuthUser {
+  id: string;
+  username: string;
+  name: string;
+  role: { id: string; name: string };
+  permissions: string[];
+}
 interface AuthState { user: AuthUser | null; accessToken: string | null }
 
 export const AuthContext = createContext<{
@@ -12,7 +17,7 @@ export const AuthContext = createContext<{
   // below) has finished, so App.tsx knows whether "no user yet" means
   // "definitely logged out" or "still checking the keychain".
   ready: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, pin: string) => Promise<void>;
   logout: () => void;
   refreshAccessToken: () => Promise<string | null>;
 } | null>(null);
@@ -46,10 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  async function login(username: string, password: string) {
+  async function login(username: string, pin: string) {
     const result = await apiFetch<{ user: AuthUser; accessToken: string; refreshToken: string }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, pin }),
     });
     await commands.storeAuthTokens(result.accessToken, result.refreshToken);
     setState({ user: result.user, accessToken: result.accessToken });

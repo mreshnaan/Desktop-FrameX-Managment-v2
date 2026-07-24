@@ -88,6 +88,12 @@ export interface PulledRow {
   row: Record<string, unknown>;
 }
 
+export interface BackupInfo {
+  filename: string;
+  createdAt: string;
+  sizeBytes: number;
+}
+
 // Thin typed wrappers over Tauri's invoke() -- the only place in the TS
 // codebase that talks to the Rust backend. Every call here corresponds 1:1
 // to a #[tauri::command] in apps/desktop/src-tauri/src/.
@@ -99,9 +105,23 @@ export const commands = {
   getAuthTokens: () => invoke<AuthTokens | null>('get_auth_tokens'),
   clearAuthTokens: () => invoke<void>('clear_auth_tokens'),
 
-  // Categories/stations (read-only, populated by sync)
+  // Categories/stations -- pull-only for everyone except an admin using the
+  // category-management screen (see 'categoryManagement' permission), which
+  // is the only place these write commands are called.
   listCategories: () => invoke<CategoryRow[]>('list_categories'),
+  createCategory: (name: string, billingType: string) =>
+    invoke<CategoryRow>('create_category', { name, billingType }),
+  updateCategory: (id: string, name: string, billingType: string) =>
+    invoke<CategoryRow>('update_category', { id, name, billingType }),
   listStations: () => invoke<StationRow[]>('list_stations'),
+  createStation: (categoryId: string, name: string) => invoke<StationRow>('create_station', { categoryId, name }),
+  updateStation: (id: string, name: string) => invoke<StationRow>('update_station', { id, name }),
+
+  // Backup/restore (admin-only, 'backupRestore' permission)
+  backupNow: () => invoke<BackupInfo>('backup_now'),
+  listBackups: () => invoke<BackupInfo[]>('list_backups'),
+  restoreBackup: (filename: string) => invoke<void>('restore_backup', { filename }),
+  getBackupDir: () => invoke<string>('get_backup_dir'),
 
   // Rates
   listRates: () => invoke<RateRow[]>('list_rates'),

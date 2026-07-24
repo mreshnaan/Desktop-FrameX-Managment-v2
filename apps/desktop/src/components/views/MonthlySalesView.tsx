@@ -15,6 +15,7 @@ import {
 } from '@/lib/shared';
 import { commands, type SessionRow } from '@/lib/tauri/commands';
 import { useCategories } from '@/lib/hooks/useCategories';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -175,7 +176,7 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
       <Card>
         <CardContent className="px-0">
           {isLoading ? (
-            <p className="px-4 text-sm text-muted-foreground">Loading sessions…</p>
+            <ListSkeleton />
           ) : (
             <Table>
               <TableHeader>

@@ -1,3 +1,4 @@
+pub mod backup;
 pub mod categories;
 pub mod credit_entries;
 pub mod customers;

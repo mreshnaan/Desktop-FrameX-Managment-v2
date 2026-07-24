@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
-import { hasAccess, todayStr } from '@/lib/shared';
+import { hasPermission, todayStr } from '@/lib/shared';
 import { AuthProvider } from '@/lib/auth/AuthContext';
 import { useAuth } from '@/lib/auth/useAuth';
 import { startSyncEngine, runBootstrapPull } from '@/lib/sync/syncEngine';
@@ -15,6 +15,10 @@ import CreditManagementView from './components/views/CreditManagementView';
 import ExpensesView from './components/views/ExpensesView';
 import RateManagementView from './components/views/RateManagementView';
 import UserManagementView from './components/views/UserManagementView';
+import RoleManagementView from './components/views/RoleManagementView';
+import CategoryManagementView from './components/views/CategoryManagementView';
+import BackupSettingsView from './components/views/BackupSettingsView';
+import type { PermissionKey } from '@/lib/shared';
 
 // networkMode defaults to 'online' in TanStack Query, which pauses queries
 // and mutations whenever the browser is offline -- even ones whose queryFn
@@ -29,19 +33,29 @@ const queryClient = new QueryClient({
   },
 });
 
+// Defense in depth: the sidebar (Sidebar.tsx) already hides admin-only nav
+// buttons for roles without the matching permission, but that alone doesn't
+// stop a view from being reached some other way (e.g. state left over from
+// a role change, a bug elsewhere). The real enforcement is server-side
+// (`requireView` on the API), but this avoids rendering a confusing
+// blank/broken screen client-side if it's ever reached.
+function AdminGate({ permissions, requires, children }: {
+  permissions: string[] | undefined;
+  requires: PermissionKey;
+  children: React.ReactNode;
+}) {
+  if (!permissions || !hasPermission(permissions, requires)) {
+    return <div className="p-4 text-sm text-muted-foreground">Not authorized to view this page.</div>;
+  }
+  return <>{children}</>;
+}
+
 function AuthenticatedApp() {
   const { state } = useAuth();
   const [view, setView] = useState<BusinessViewKey>('dailySales');
   const [date, setDate] = useState(todayStr());
   const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  // Defense in depth: the sidebar (Sidebar.tsx) already hides the "User
-  // Management" nav button for roles without access, but that alone doesn't
-  // stop the view from being reached some other way (e.g. state left over
-  // from a role change, a bug elsewhere). The real enforcement is server-side
-  // (`requireView` on the API), but this check avoids rendering a confusing
-  // blank/broken screen client-side if it's ever reached.
-  const role = state.user?.role;
+  const permissions = state.user?.permissions;
 
   return (
     <AppShell
@@ -63,14 +77,26 @@ function AuthenticatedApp() {
       {view === 'creditManagement' && <CreditManagementView />}
       {view === 'expenses' && <ExpensesView date={date} onDateChange={setDate} />}
       {view === 'rateManagement' && <RateManagementView />}
-      {view === 'userManagement' &&
-        (role && hasAccess(role, 'userManagement') ? (
+      {view === 'userManagement' && (
+        <AdminGate permissions={permissions} requires="userManagement">
           <UserManagementView />
-        ) : (
-          <div className="p-4 text-sm text-muted-foreground">
-            Not authorized to view this page.
-          </div>
-        ))}
+        </AdminGate>
+      )}
+      {view === 'roleManagement' && (
+        <AdminGate permissions={permissions} requires="roleManagement">
+          <RoleManagementView />
+        </AdminGate>
+      )}
+      {view === 'categoryManagement' && (
+        <AdminGate permissions={permissions} requires="categoryManagement">
+          <CategoryManagementView />
+        </AdminGate>
+      )}
+      {view === 'backupRestore' && (
+        <AdminGate permissions={permissions} requires="backupRestore">
+          <BackupSettingsView />
+        </AdminGate>
+      )}
     </AppShell>
   );
 }

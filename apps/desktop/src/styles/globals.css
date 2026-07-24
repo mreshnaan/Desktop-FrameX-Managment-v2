@@ -1,16 +1,17 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 
-/* Classical design system: warm off-white ground, single gold accent,
-   hairline borders instead of filled surfaces, serif headings. */
+/* Matches FrameX's theme exactly (config/branding.ts) -- grayscale base,
+   Geist sans-serif. These :root/.dark blocks are the pre-JS fallback;
+   src/theme/applyTheme.ts overwrites the same variables from the same
+   source of truth once main.tsx runs. */
 @theme inline {
-    --font-heading: "Cormorant Garamond", system-ui, sans-serif;
-    --font-body: "Lora", system-ui, sans-serif;
-    --font-sans: var(--font-body);
+    --font-heading: var(--font-sans);
+    --font-sans: 'Geist', system-ui, sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -52,38 +53,38 @@
 }
 
 :root {
-    --background: hsl(0 0% 95%);              /* #f3f2f2 */
-    --foreground: hsl(30 4% 12%);              /* #201f1d */
-    --card: hsl(0 0% 95%);
-    --card-foreground: hsl(30 4% 12%);
-    --popover: hsl(0 0% 95%);
-    --popover-foreground: hsl(30 4% 12%);
-    --primary: hsl(34 51% 47%);                /* #b68235 accent */
-    --primary-foreground: hsl(0 0% 100%);
-    --secondary: hsl(0 0% 91%);
-    --secondary-foreground: hsl(30 4% 12%);
-    --muted: hsl(0 0% 91%);
-    --muted-foreground: hsl(30 4% 40%);
-    --accent: hsl(34 40% 90%);
-    --accent-foreground: hsl(30 4% 12%);
-    --destructive: hsl(6 45% 38%);
-    --border: hsl(30 4% 12% / 0.16);           /* hairline divider */
-    --input: hsl(30 4% 12% / 0.16);
-    --ring: hsl(34 51% 47%);
-    --chart-1: hsl(34 51% 47%);
-    --chart-2: hsl(30 4% 40%);
-    --chart-3: hsl(30 4% 60%);
-    --chart-4: hsl(34 30% 70%);
-    --chart-5: hsl(30 4% 25%);
-    --radius: 0.25rem;                         /* --radius-md: 4px */
-    --sidebar: hsl(0 0% 95%);
-    --sidebar-foreground: hsl(30 4% 12%);
-    --sidebar-primary: hsl(34 51% 47%);
-    --sidebar-primary-foreground: hsl(0 0% 100%);
-    --sidebar-accent: hsl(34 40% 90%);
-    --sidebar-accent-foreground: hsl(30 4% 12%);
-    --sidebar-border: hsl(30 4% 12% / 0.16);
-    --sidebar-ring: hsl(34 51% 47%);
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
 }
 
 .dark {
@@ -125,14 +126,9 @@
     @apply border-border outline-ring/50;
     }
   body {
-    @apply bg-background text-foreground;
-    font-family: var(--font-body);
+    @apply bg-background text-foreground font-sans;
     }
   html {
     @apply font-sans;
-    }
-  h1, h2, h3, h4 {
-    font-family: var(--font-heading);
-    font-weight: 600;
     }
 }

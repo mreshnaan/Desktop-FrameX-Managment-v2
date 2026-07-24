@@ -8,11 +8,13 @@ import {
   createColumnHelper,
   flexRender,
 } from '@tanstack/react-table';
-import { CreateUserSchema, ROLES, type CreateUserInput, type Role } from '@/lib/shared';
+import { CreateUserSchema, type CreateUserInput } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
 import { apiFetch } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PinInput } from '@/components/ui/pin-input';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldGroup, FieldLabel, FieldError } from '@/components/ui/field';
 import {
@@ -35,7 +37,13 @@ interface UserRow {
   id: string;
   username: string;
   name: string;
-  role: Role;
+  role: { id: string; name: string };
+}
+
+interface RoleRow {
+  id: string;
+  name: string;
+  isSystem: boolean;
 }
 
 const columnHelper = createColumnHelper<UserRow>();
@@ -43,7 +51,7 @@ const columnHelper = createColumnHelper<UserRow>();
 const columns = [
   columnHelper.accessor('name', { header: 'Name' }),
   columnHelper.accessor('username', { header: 'Username' }),
-  columnHelper.accessor('role', { header: 'Role' }),
+  columnHelper.accessor(row => row.role.name, { id: 'role', header: 'Role' }),
 ];
 
 export default function UserManagementView() {
@@ -56,6 +64,10 @@ export default function UserManagementView() {
     queryKey: ['users'],
     queryFn: () => apiFetch<UserRow[]>('/users', { accessToken }),
   });
+  const rolesQuery = useQuery({
+    queryKey: ['roles'],
+    queryFn: () => apiFetch<RoleRow[]>('/roles', { accessToken }),
+  });
 
   const {
     register,
@@ -65,7 +77,7 @@ export default function UserManagementView() {
     formState: { errors, isSubmitting },
   } = useForm<CreateUserInput>({
     resolver: zodResolver(CreateUserSchema),
-    defaultValues: { username: '', password: '', name: '', role: 'CASHIER' },
+    defaultValues: { username: '', pin: '', name: '', roleId: '' },
   });
 
   async function onSubmit(data: CreateUserInput) {
@@ -121,38 +133,37 @@ export default function UserManagementView() {
                 <FieldError errors={errors.username ? [errors.username] : undefined} />
               </Field>
               <Field>
-                <FieldLabel htmlFor="user-password">Password</FieldLabel>
-                <Input
-                  id="user-password"
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="Password"
-                  aria-invalid={!!errors.password}
-                  {...register('password')}
+                <FieldLabel htmlFor="user-pin">PIN</FieldLabel>
+                <Controller
+                  name="pin"
+                  control={control}
+                  render={({ field }) => (
+                    <PinInput id="user-pin" value={field.value} onChange={field.onChange} aria-invalid={!!errors.pin} />
+                  )}
                 />
-                <FieldError errors={errors.password ? [errors.password] : undefined} />
+                <FieldError errors={errors.pin ? [errors.pin] : undefined} />
               </Field>
               <Field>
                 <FieldLabel htmlFor="user-role">Role</FieldLabel>
                 <Controller
-                  name="role"
+                  name="roleId"
                   control={control}
                   render={({ field }) => (
                     <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger id="user-role" aria-invalid={!!errors.role}>
+                      <SelectTrigger id="user-role" aria-invalid={!!errors.roleId}>
                         <SelectValue placeholder="Select role" />
                       </SelectTrigger>
                       <SelectContent>
-                        {ROLES.map(role => (
-                          <SelectItem key={role} value={role}>
-                            {role}
+                        {(rolesQuery.data ?? []).map(role => (
+                          <SelectItem key={role.id} value={role.id} label={role.name}>
+                            {role.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   )}
                 />
-                <FieldError errors={errors.role ? [errors.role] : undefined} />
+                <FieldError errors={errors.roleId ? [errors.roleId] : undefined} />
               </Field>
             </FieldGroup>
             {formError && (
@@ -173,7 +184,7 @@ export default function UserManagementView() {
         </CardHeader>
         <CardContent className="px-0">
           {usersQuery.isLoading ? (
-            <p className="px-4 text-sm text-muted-foreground">Loading users…</p>
+            <ListSkeleton />
           ) : !usersQuery.data || usersQuery.data.length === 0 ? (
             <p className="px-4 text-sm text-muted-foreground">No users yet.</p>
           ) : (

@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { FieldError } from '@/components/ui/field';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 
 interface DailySalesViewProps {
   date: string;
@@ -54,7 +55,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
       <SummaryStrip summary={summary} />
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading sessions…</p>
+        <ListSkeleton />
       ) : (
         <div className="flex flex-col gap-6">
           {categories.map(category => (

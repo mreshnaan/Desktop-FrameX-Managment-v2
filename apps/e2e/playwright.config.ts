@@ -12,9 +12,22 @@ export default defineConfig({
   fullyParallel: false, // tests share one Postgres + API instance
   retries: 0,
   use: { baseURL: 'http://localhost:5173' },
-  webServer: {
-    command: 'pnpm --filter @cue-room/web dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: true,
-  },
+  webServer: [
+    {
+      command: 'pnpm --filter @cue-room/web dev',
+      url: 'http://localhost:5173',
+      reuseExistingServer: true,
+    },
+    {
+      command: 'pnpm --filter @cue-room/api dev',
+      url: 'http://localhost:4000/health',
+      reuseExistingServer: true,
+      env: {
+        DATABASE_URL: process.env.DATABASE_URL ?? '',
+        JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET ?? '',
+        JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET ?? '',
+        PORT: process.env.PORT ?? '4000',
+      },
+    },
+  ],
 });

@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { CATEGORIES } from '../constants/categories';
+import { CATEGORIES } from '../constants/categories.js';
 
-const categoryNames = CATEGORIES.map(c => c.name) as [string, ...string[]];
+const categoryNames = CATEGORIES.map((c: { name: string }) => c.name) as [string, ...string[]];
 
 const sessionBaseSchema = z.object({
   id: z.string().uuid(),

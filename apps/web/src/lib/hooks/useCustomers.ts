@@ -47,6 +47,7 @@ export function useCustomers() {
   return {
     customers: customersQuery.data ?? [],
     history: historyQuery.data ?? [],
+    sessions: sessionsQuery.data ?? [],
     addCustomer, deleteCustomer, adjustCustomer, balanceFor,
   };
 }

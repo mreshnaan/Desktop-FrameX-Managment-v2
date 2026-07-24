@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery } from '@tanstack/react-query';
 import {
   CreditDraftSchema,
   formatCurrency,
@@ -11,7 +10,6 @@ import {
   type CreditEntry,
   type Session,
 } from '@/lib/shared';
-import { db } from '@/lib/db/dexie';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,11 +32,7 @@ interface HistoryRow {
 }
 
 export default function CreditManagementView() {
-  const { customers, history, adjustCustomer, balanceFor } = useCustomers();
-  const { data: sessions = [] } = useQuery({
-    queryKey: ['all-sessions'],
-    queryFn: () => db.sessions.toArray(),
-  });
+  const { customers, history, sessions, adjustCustomer, balanceFor } = useCustomers();
 
   return (
     <div className="flex flex-col gap-4 p-4">

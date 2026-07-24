@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { Role } from '@prisma/client';
+import type { Role } from '../shared/index';
 import { CreateUserSchema } from '../shared/index';
 import { prisma } from '../db';
 import { hashPassword } from '../lib/password';

@@ -28,5 +28,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // e2e/ holds Playwright specs (a separate test runner, own config) --
+    // without this exclusion vitest also tries to collect them and fails
+    // with "Playwright Test did not expect test() to be called here."
+    exclude: ['**/node_modules/**', '**/e2e/**'],
   },
 } as UserConfig)

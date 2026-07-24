@@ -1,0 +1,7 @@
+{
+  "identifier": "com.cueroom.desktop.e2e",
+  "productName": "Cue Room E2E",
+  "bundle": {
+    "active": false
+  }
+}

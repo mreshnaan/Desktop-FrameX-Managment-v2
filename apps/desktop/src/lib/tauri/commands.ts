@@ -1,4 +1,18 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+
+// Tauri rejects a failed command with the raw string a Rust #[tauri::command]
+// returned via Err(...), not an Error instance -- every view's catch block
+// does `e instanceof Error ? e.message : 'Some generic fallback'`, so without
+// this normalization every backend error (insufficient stock, duplicate PIN,
+// invalid credentials, ...) silently shows the generic fallback instead of
+// the real message. Wrapping invoke() once here fixes every call site below.
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return await tauriInvoke<T>(cmd, args);
+  } catch (e) {
+    throw e instanceof Error ? e : new Error(typeof e === 'string' ? e : JSON.stringify(e));
+  }
+}
 
 export interface CategoryRow {
   id: string;

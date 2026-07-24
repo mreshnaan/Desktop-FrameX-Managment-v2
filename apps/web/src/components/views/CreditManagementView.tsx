@@ -129,7 +129,9 @@ function CustomerCreditCard({
         </div>
         <div className="text-right">
           <div className="text-xs text-muted-foreground">Balance</div>
-          <div className="text-lg font-semibold">{formatCurrency(balance)}</div>
+          <div className="text-lg font-semibold" data-testid={`balance-${customer.name}`}>
+            {formatCurrency(balance)}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -138,6 +140,7 @@ function CustomerCreditCard({
             <FieldLabel htmlFor={`amount-${customer.id}`}>Amount</FieldLabel>
             <Input
               id={`amount-${customer.id}`}
+              data-testid={`draft-amount-${customer.name}`}
               type="number"
               min={1}
               step={1}

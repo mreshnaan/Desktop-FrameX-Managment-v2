@@ -284,12 +284,19 @@ function SessionRow({
             onValueChange={value => commit({ customerId: value })}
           >
             <SelectTrigger className="w-36" aria-label="Customer">
-              <SelectValue placeholder="No customer" />
+              {/* SelectValue only resolves a display label from the registered
+                  `items`/`itemToStringLabel` root props, not from SelectItem
+                  children/label — since customerId (the value) differs from
+                  the customer's name (the label), it must be resolved
+                  explicitly here or the trigger renders the raw id. */}
+              <SelectValue placeholder="No customer">
+                {(value: string | null) => customers.find(c => c.id === value)?.name ?? 'No customer'}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={null}>No customer</SelectItem>
+              <SelectItem value={null} label="No customer">No customer</SelectItem>
               {customers.map(c => (
-                <SelectItem key={c.id} value={c.id}>
+                <SelectItem key={c.id} value={c.id} label={c.name}>
                   {c.name}
                 </SelectItem>
               ))}

@@ -10,6 +10,8 @@ dotenv.config({ path: path.resolve(__dirname, '../api/.env') });
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false, // tests share one Postgres + API instance
+  workers: 1, // multiple spec files still run in separate workers by default,
+              // which races on the shared Postgres cleanup/seed fixtures
   retries: 0,
   use: { baseURL: 'http://localhost:5173' },
   webServer: [

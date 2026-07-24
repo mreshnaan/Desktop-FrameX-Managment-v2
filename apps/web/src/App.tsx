@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { todayStr } from '@/lib/shared';
+import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
+import { hasAccess, todayStr } from '@/lib/shared';
 import { AuthProvider } from '@/lib/auth/AuthContext';
 import { useAuth } from '@/lib/auth/useAuth';
 import { startSyncEngine } from '@/lib/sync/syncEngine';
@@ -13,13 +13,23 @@ import CustomersView from './components/views/CustomersView';
 import CreditManagementView from './components/views/CreditManagementView';
 import ExpensesView from './components/views/ExpensesView';
 import RateManagementView from './components/views/RateManagementView';
+import UserManagementView from './components/views/UserManagementView';
 
 const queryClient = new QueryClient();
 
 function AuthenticatedApp() {
+  const { state } = useAuth();
   const [view, setView] = useState<BusinessViewKey>('dailySales');
   const [date, setDate] = useState(todayStr());
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Defense in depth: the sidebar (Sidebar.tsx) already hides the "User
+  // Management" nav button for roles without access, but that alone doesn't
+  // stop the view from being reached some other way (e.g. state left over
+  // from a role change, a bug elsewhere). The real enforcement is server-side
+  // (`requireView` on the API), but this check avoids rendering a confusing
+  // blank/broken screen client-side if it's ever reached.
+  const role = state.user?.role;
 
   return (
     <AppShell
@@ -41,6 +51,14 @@ function AuthenticatedApp() {
       {view === 'creditManagement' && <CreditManagementView />}
       {view === 'expenses' && <ExpensesView date={date} onDateChange={setDate} />}
       {view === 'rateManagement' && <RateManagementView />}
+      {view === 'userManagement' &&
+        (role && hasAccess(role, 'userManagement') ? (
+          <UserManagementView />
+        ) : (
+          <div className="p-4 text-sm text-muted-foreground">
+            Not authorized to view this page.
+          </div>
+        ))}
     </AppShell>
   );
 }

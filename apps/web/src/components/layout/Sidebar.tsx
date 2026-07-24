@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
-import { Calendar, BarChart3, Users, CreditCard, Receipt, Settings } from 'lucide-react';
-import type { ViewKey } from '@/lib/shared';
+import { Calendar, BarChart3, Users, CreditCard, Receipt, Settings, ShieldCheck } from 'lucide-react';
+import { hasAccess, type ViewKey } from '@/lib/shared';
+import { useAuth } from '@/lib/auth/useAuth';
 import {
   Sidebar as SidebarPrimitive,
   SidebarContent,
@@ -13,11 +14,12 @@ import {
 } from '@/components/ui/sidebar';
 
 /**
- * The six business views navigable today. 'userManagement' is part of the
- * shared ViewKey union (added for role-gating in a later task) but has no
- * view component yet, so it is excluded here.
+ * All seven views navigable today, including 'userManagement' (Task 22).
+ * Kept as a distinct alias (rather than importing ViewKey directly at every
+ * call site) so downstream consumers (AppShell, App.tsx) don't need to know
+ * this is the full shared ViewKey union.
  */
-export type BusinessViewKey = Exclude<ViewKey, 'userManagement'>;
+export type BusinessViewKey = ViewKey;
 
 interface NavItem {
   key: BusinessViewKey;
@@ -32,6 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'creditManagement', label: 'Credit Management', icon: CreditCard },
   { key: 'expenses', label: 'Expenses', icon: Receipt },
   { key: 'rateManagement', label: 'Rate Management', icon: Settings },
+  { key: 'userManagement', label: 'User Management', icon: ShieldCheck },
 ];
 
 interface AppSidebarProps {
@@ -40,6 +43,10 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
+  const { state } = useAuth();
+  const role = state.user?.role;
+  const visibleItems = role ? NAV_ITEMS.filter(item => hasAccess(role, item.key)) : [];
+
   return (
     <SidebarPrimitive collapsible="icon">
       <SidebarHeader>
@@ -51,7 +58,7 @@ export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV_ITEMS.map(item => (
+              {visibleItems.map(item => (
                 <SidebarMenuItem key={item.key}>
                   <SidebarMenuButton
                     isActive={view === item.key}

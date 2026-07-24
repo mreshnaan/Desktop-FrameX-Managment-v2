@@ -1,15 +1,25 @@
-import { db } from '../db/dexie';
+import type { Table } from 'dexie';
+import { db, type RateRow } from '../db/dexie';
 import { apiFetch } from '../api/client';
+import type { Session, Expense, Customer, CreditEntry } from '@/lib/shared';
 
 const CURSOR_KEY = 'cue-room-sync-cursor';
 const TABLES = ['sessions', 'expenses', 'customers', 'creditEntries', 'rates'] as const;
 
+interface TableRowMap {
+  sessions: Session;
+  expenses: Expense;
+  customers: Customer;
+  creditEntries: CreditEntry;
+  rates: RateRow;
+}
+
 interface PullResult {
-  sessions: any[];
-  expenses: any[];
-  customers: any[];
-  creditEntries: any[];
-  rates: any[];
+  sessions: Session[];
+  expenses: Expense[];
+  customers: Customer[];
+  creditEntries: CreditEntry[];
+  rates: RateRow[];
   serverTime: string;
 }
 
@@ -27,12 +37,12 @@ async function push(accessToken: string) {
   await db.outbox.bulkDelete(pending.map((p) => p.outboxId!));
 }
 
-async function mergeIncoming(table: (typeof TABLES)[number], rows: any[]) {
-  const dexieTable = (db as any)[table];
+async function mergeIncoming<K extends keyof TableRowMap>(table: K, rows: TableRowMap[K][]) {
+  const dexieTable = db[table] as Table<TableRowMap[K], string>;
   for (const row of rows) {
-    const key = table === 'rates' ? row.category : row.id;
+    const key = table === 'rates' ? (row as RateRow).category : (row as { id: string }).id;
     const existing = await dexieTable.get(key);
-    if (!existing || new Date(row.updatedAt) > new Date(existing.updatedAt)) {
+    if (!existing || new Date(row.updatedAt ?? 0) > new Date(existing.updatedAt ?? 0)) {
       await dexieTable.put(row);
     }
   }

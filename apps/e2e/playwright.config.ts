@@ -5,7 +5,9 @@ import { defineConfig } from '@playwright/test';
 // apps/e2e has no .env of its own — load apps/api/.env so seed fixtures
 // (which use apps/api's Prisma client) can find DATABASE_URL etc. when
 // Playwright's test process runs.
-dotenv.config({ path: path.resolve(__dirname, '../api/.env') });
+// quiet: true suppresses dotenv's console output, including its rotating
+// promotional "tips" (as of dotenv 17.x) — not needed for test/CI logs.
+dotenv.config({ path: path.resolve(__dirname, '../api/.env'), quiet: true });
 
 export default defineConfig({
   testDir: './tests',

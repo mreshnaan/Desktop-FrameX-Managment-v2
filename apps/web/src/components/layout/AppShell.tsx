@@ -1,5 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { LogOut } from 'lucide-react';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth/useAuth';
 import { AppSidebar, type BusinessViewKey } from './Sidebar';
 
 interface AppShellProps {
@@ -23,6 +26,8 @@ export function AppShell({
   onSidebarOpenChange,
   children,
 }: AppShellProps) {
+  const { logout } = useAuth();
+
   return (
     <SidebarProvider
       open={sidebarOpen}
@@ -34,6 +39,16 @@ export function AppShell({
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
           <SidebarTrigger />
           <span className="text-sm font-medium text-muted-foreground">Cue Room</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            onClick={logout}
+            data-testid="logout-button"
+          >
+            <LogOut />
+            Log out
+          </Button>
         </header>
         <div className="min-h-0 flex-1 overflow-auto">{children}</div>
       </SidebarInset>

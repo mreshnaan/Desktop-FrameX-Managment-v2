@@ -9,7 +9,10 @@ export function useCustomers() {
     queryKey: ['customers'],
     queryFn: async () => (await db.customers.toArray()).filter(c => !c.deletedAt),
   });
-  const sessionsQuery = useQuery({ queryKey: ['all-sessions'], queryFn: () => db.sessions.toArray() });
+  const sessionsQuery = useQuery({
+    queryKey: ['all-sessions'],
+    queryFn: async () => (await db.sessions.toArray()).filter(s => !s.deletedAt),
+  });
   const historyQuery = useQuery({ queryKey: ['credit-entries'], queryFn: () => db.creditEntries.toArray() });
 
   async function addCustomer(input: { name: string; phone?: string }) {

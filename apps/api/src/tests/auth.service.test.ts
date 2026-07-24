@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { login } from '../services/auth.service.js';
-import { hashPassword } from '../lib/password.js';
-import { prisma } from '../db.js';
+import { login } from '../services/auth.service';
+import { hashPassword } from '../lib/password';
+import { prisma } from '../db';
 
-vi.mock('../db.js', () => ({
+vi.mock('../db', () => ({
   prisma: { user: { findUnique: vi.fn() } },
 }));
 

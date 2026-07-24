@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { verifyAccessToken } from '../lib/jwt.js';
+import { verifyAccessToken } from '../lib/jwt';
 
 export interface AuthedRequest extends Request {
   user?: { sub: string; role: 'OWNER' | 'ADMIN' | 'CASHIER' };

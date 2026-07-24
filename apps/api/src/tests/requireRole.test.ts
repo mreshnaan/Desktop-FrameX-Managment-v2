@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { requireView } from '../middleware/requireRole.js';
+import { requireView } from '../middleware/requireRole';
 
 function mockRes() {
   const res: any = {};

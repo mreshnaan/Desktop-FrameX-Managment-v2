@@ -1,6 +1,6 @@
 import type { Response, NextFunction } from 'express';
-import { hasAccess, type ViewKey } from '../shared/index.js';
-import type { AuthedRequest } from './auth.js';
+import { hasAccess, type ViewKey } from '../shared/index';
+import type { AuthedRequest } from './auth';
 
 export function requireView(view: ViewKey) {
   return (req: AuthedRequest, res: Response, next: NextFunction) => {

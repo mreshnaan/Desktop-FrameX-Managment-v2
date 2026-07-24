@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ROLES } from '../constants/roles.js';
+import { ROLES } from '../constants/roles';
 
 export const LoginSchema = z.object({
   email: z.string().email('Enter a valid email'),

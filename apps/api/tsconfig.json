@@ -1,11 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "module": "nodenext",
+    "module": "esnext",
     "lib": ["ES2023"],
     "outDir": "./dist",
     "rootDir": "./src",
-    "moduleResolution": "nodenext",
+    "moduleResolution": "bundler",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

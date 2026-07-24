@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
-import { env } from '../env.js';
-import type { Role } from '../shared/index.js';
+import { env } from '../env';
+import type { Role } from '../shared/index';
 
 export interface AccessTokenPayload { sub: string; role: Role }
 

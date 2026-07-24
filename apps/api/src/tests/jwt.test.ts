@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { signAccessToken, verifyAccessToken } from '../lib/jwt.js';
+import { signAccessToken, verifyAccessToken } from '../lib/jwt';
 
 describe('jwt', () => {
   it('round-trips subject and role through sign/verify', () => {

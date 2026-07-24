@@ -11,6 +11,11 @@ vi.mock('../db', () => {
     rate: { upsert: vi.fn() },
     category: { upsert: vi.fn() },
     station: { upsert: vi.fn() },
+    productCategory: { upsert: vi.fn() },
+    product: { upsert: vi.fn() },
+    order: { upsert: vi.fn() },
+    orderItem: { upsert: vi.fn() },
+    stockMovement: { upsert: vi.fn() },
   };
   // Real Prisma interactive transactions run the callback against a tx client;
   // for these unit tests the tx client is just the same mocked prisma object,
@@ -94,6 +99,41 @@ describe('applyPush', () => {
     expect(prisma.station.upsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'st-1' },
       create: expect.objectContaining({ id: 'st-1', categoryId: 'cat-1' }),
+    }));
+  });
+
+  it('upserts a product, soft-deleting via deletedAt like customers/sessions', async () => {
+    await applyPush([
+      { table: 'products', op: 'upsert', id: 'p1', payload: { categoryId: 'pc-1', name: 'Cola', price: 50, stockQty: 10 }, clientUpdatedAt: new Date().toISOString() },
+    ]);
+    expect(prisma.product.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'p1' },
+      create: expect.objectContaining({ id: 'p1', name: 'Cola', deletedAt: null }),
+    }));
+  });
+
+  it('upserts an order and its order items as separate table entries', async () => {
+    await applyPush([
+      { table: 'orders', op: 'upsert', id: 'o1', payload: { method: 'Cash', total: 100, customerId: null }, clientUpdatedAt: new Date().toISOString() },
+      { table: 'orderItems', op: 'upsert', id: 'oi1', payload: { orderId: 'o1', productId: 'p1', qty: 2, unitPrice: 50, lineTotal: 100 }, clientUpdatedAt: new Date().toISOString() },
+    ]);
+    expect(prisma.order.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'o1' },
+      create: expect.objectContaining({ id: 'o1', total: 100 }),
+    }));
+    expect(prisma.orderItem.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'oi1' },
+      create: expect.objectContaining({ id: 'oi1', orderId: 'o1', productId: 'p1' }),
+    }));
+  });
+
+  it('upserts a stock movement', async () => {
+    await applyPush([
+      { table: 'stockMovements', op: 'upsert', id: 'sm1', payload: { productId: 'p1', delta: -2, reason: 'sale' }, clientUpdatedAt: new Date().toISOString() },
+    ]);
+    expect(prisma.stockMovement.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'sm1' },
+      create: expect.objectContaining({ id: 'sm1', productId: 'p1', delta: -2 }),
     }));
   });
 });

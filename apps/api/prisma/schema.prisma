@@ -18,6 +18,13 @@ enum CreditType {
   PAYMENT_RECEIVED
 }
 
+enum StockMovementReason {
+  purchase
+  sale
+  waste
+  correction
+}
+
 model Permission {
   id    String           @id @default(uuid())
   key   String           @unique
@@ -134,4 +141,75 @@ model Rate {
   half       Int?
   value      Int?
   updatedAt  DateTime @default(now())
+}
+
+// Cafe: a standalone point-of-sale revenue stream (snacks/drinks sold at the
+// counter), deliberately NOT tied to a table Session the way FrameX ties
+// cafe orders to an open session "tab" -- Cue Room's Session model has no
+// running-tab/checkout step (a session row already carries its own
+// amount+method), so an Order here is its own immediate pay-now transaction
+// instead. Reporting is intentionally separate from Daily/Monthly Sales
+// (station revenue) -- see CafeView, not DailySalesView.
+model ProductCategory {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  products Product[]
+}
+
+model Product {
+  id                String            @id @default(uuid())
+  categoryId        String
+  category          ProductCategory   @relation(fields: [categoryId], references: [id])
+  name              String
+  price             Int
+  cost              Int?
+  stockQty          Int               @default(0)
+  lowStockThreshold Int               @default(0)
+  barcode           String?
+  active            Boolean           @default(true)
+  updatedAt         DateTime          @default(now())
+  deletedAt         DateTime?
+  orderItems        OrderItem[]
+  stockMovements    StockMovement[]
+
+  @@index([categoryId])
+}
+
+model Order {
+  id         String      @id @default(uuid())
+  method     Method
+  total      Int
+  customerId String?
+  updatedAt  DateTime    @default(now())
+  deletedAt  DateTime?
+  items      OrderItem[]
+
+  @@index([customerId])
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  qty       Int
+  unitPrice Int
+  lineTotal Int
+  updatedAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model StockMovement {
+  id        String               @id @default(uuid())
+  productId String
+  product   Product              @relation(fields: [productId], references: [id])
+  delta     Int
+  reason    StockMovementReason
+  note      String?
+  updatedAt DateTime             @default(now())
+
+  @@index([productId])
 }

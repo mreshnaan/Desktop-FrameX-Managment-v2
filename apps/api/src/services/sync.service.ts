@@ -86,6 +86,54 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date): Promise<
       });
       break;
     }
+    case 'productCategories': {
+      // No CRUD UI pushes these except the desktop admin's product-management
+      // screen (mirrors categories/stations).
+      await tx.productCategory.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...entry.payload } as unknown as Prisma.ProductCategoryUncheckedCreateInput,
+        update: entry.payload as unknown as Prisma.ProductCategoryUncheckedUpdateInput,
+      });
+      break;
+    }
+    case 'products': {
+      const base = { ...entry.payload, updatedAt: now, deletedAt: isDelete ? now : null };
+      await tx.product.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...base } as unknown as Prisma.ProductUncheckedCreateInput,
+        update: base as unknown as Prisma.ProductUncheckedUpdateInput,
+      });
+      break;
+    }
+    case 'orders': {
+      const base = { ...entry.payload, updatedAt: now, deletedAt: isDelete ? now : null };
+      await tx.order.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...base } as unknown as Prisma.OrderUncheckedCreateInput,
+        update: base as unknown as Prisma.OrderUncheckedUpdateInput,
+      });
+      break;
+    }
+    case 'orderItems': {
+      // Immutable line items -- no deletedAt, order rows are never edited
+      // after creation.
+      const base = { ...entry.payload, updatedAt: now };
+      await tx.orderItem.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...base } as unknown as Prisma.OrderItemUncheckedCreateInput,
+        update: base as unknown as Prisma.OrderItemUncheckedUpdateInput,
+      });
+      break;
+    }
+    case 'stockMovements': {
+      const base = { ...entry.payload, updatedAt: now };
+      await tx.stockMovement.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...base } as unknown as Prisma.StockMovementUncheckedCreateInput,
+        update: base as unknown as Prisma.StockMovementUncheckedUpdateInput,
+      });
+      break;
+    }
   }
 }
 
@@ -139,7 +187,10 @@ export async function pullSince(since?: string) {
   // categories/stations have no updatedAt column (see schema migration note --
   // they're stable, server-seeded reference data with no client-side edits),
   // so every pull returns the full set rather than filtering by `since`.
-  const [sessions, expenses, customers, creditEntries, rates, categories, stations] = await Promise.all([
+  const [
+    sessions, expenses, customers, creditEntries, rates, categories, stations,
+    productCategories, products, orders, orderItems, stockMovements,
+  ] = await Promise.all([
     prisma.session.findMany({ where }),
     prisma.expense.findMany({ where }),
     prisma.customer.findMany({ where }),
@@ -147,6 +198,11 @@ export async function pullSince(since?: string) {
     prisma.rate.findMany({ where }),
     prisma.category.findMany(),
     prisma.station.findMany(),
+    prisma.productCategory.findMany(),
+    prisma.product.findMany({ where }),
+    prisma.order.findMany({ where }),
+    prisma.orderItem.findMany({ where }),
+    prisma.stockMovement.findMany({ where }),
   ]);
   return {
     sessions,
@@ -156,6 +212,11 @@ export async function pullSince(since?: string) {
     rates,
     categories,
     stations,
+    productCategories,
+    products,
+    orders,
+    orderItems,
+    stockMovements,
     serverTime: new Date().toISOString(),
   };
 }

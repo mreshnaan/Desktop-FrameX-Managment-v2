@@ -10,6 +10,8 @@ import {
   KeyRound,
   LayoutGrid,
   DatabaseBackup,
+  Coffee,
+  Package,
 } from 'lucide-react';
 import { hasPermission, type PermissionKey as ViewKey } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
@@ -26,10 +28,10 @@ import {
 } from '@/components/ui/sidebar';
 
 /**
- * All seven views navigable today, including 'userManagement' (Task 22).
- * Kept as a distinct alias (rather than importing ViewKey directly at every
- * call site) so downstream consumers (AppShell, App.tsx) don't need to know
- * this is the full shared ViewKey union.
+ * Every navigable view, business and admin alike. Kept as a distinct alias
+ * (rather than importing ViewKey directly at every call site) so downstream
+ * consumers (AppShell, App.tsx) don't need to know this is the full shared
+ * PermissionKey union.
  */
 export type BusinessViewKey = ViewKey;
 
@@ -46,9 +48,11 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'creditManagement', label: 'Credit Management', icon: CreditCard },
   { key: 'expenses', label: 'Expenses', icon: Receipt },
   { key: 'rateManagement', label: 'Rate Management', icon: Settings },
+  { key: 'cafe', label: 'Cafe', icon: Coffee },
   { key: 'userManagement', label: 'User Management', icon: ShieldCheck },
   { key: 'roleManagement', label: 'Roles', icon: KeyRound },
   { key: 'categoryManagement', label: 'Categories & Stations', icon: LayoutGrid },
+  { key: 'productManagement', label: 'Products & Stock', icon: Package },
   { key: 'backupRestore', label: 'Backup & Restore', icon: DatabaseBackup },
 ];
 

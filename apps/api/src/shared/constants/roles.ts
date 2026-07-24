@@ -16,7 +16,9 @@ export type PermissionKey =
   | 'userManagement'
   | 'roleManagement'
   | 'categoryManagement'
-  | 'backupRestore';
+  | 'backupRestore'
+  | 'cafe'
+  | 'productManagement';
 
 export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
   { key: 'dailySales', label: 'Daily Sales' },
@@ -25,17 +27,23 @@ export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
   { key: 'creditManagement', label: 'Credit Management' },
   { key: 'expenses', label: 'Expenses' },
   { key: 'rateManagement', label: 'Rate Management' },
+  { key: 'cafe', label: 'Cafe' },
   { key: 'userManagement', label: 'User Management' },
   { key: 'roleManagement', label: 'Role Management' },
   { key: 'categoryManagement', label: 'Category & Station Management' },
+  { key: 'productManagement', label: 'Product & Stock Management' },
   { key: 'backupRestore', label: 'Backup & Restore' },
 ];
 
+// 'cafe' (ringing up a sale) is business-level like rateManagement --
+// cashiers need it day to day. 'productManagement' (creating products,
+// editing prices, adjusting stock) is admin-only, same tier as
+// categoryManagement.
 const BUSINESS_PERMISSIONS: PermissionKey[] = [
-  'dailySales', 'monthlySales', 'customers', 'creditManagement', 'expenses', 'rateManagement',
+  'dailySales', 'monthlySales', 'customers', 'creditManagement', 'expenses', 'rateManagement', 'cafe',
 ];
 const ADMIN_ONLY_PERMISSIONS: PermissionKey[] = [
-  'userManagement', 'roleManagement', 'categoryManagement', 'backupRestore',
+  'userManagement', 'roleManagement', 'categoryManagement', 'productManagement', 'backupRestore',
 ];
 
 // Seed data for the three protected system roles -- only used by

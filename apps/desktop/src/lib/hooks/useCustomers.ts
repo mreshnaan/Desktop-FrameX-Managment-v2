@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../tauri/commands';
 import { calcCustomerBalance } from '@/lib/shared';
@@ -6,6 +7,7 @@ export function useCustomers() {
   const qc = useQueryClient();
   const customersQuery = useQuery({ queryKey: ['customers'], queryFn: () => commands.listCustomers() });
   const sessionsQuery = useQuery({ queryKey: ['all-sessions'], queryFn: () => commands.listAllSessions() });
+  const ordersQuery = useQuery({ queryKey: ['orders'], queryFn: () => commands.listAllOrders() });
   const historyQuery = useQuery({ queryKey: ['credit-entries'], queryFn: () => commands.listCreditEntries() });
 
   async function addCustomer(input: { name: string; phone?: string }) {
@@ -28,8 +30,20 @@ export function useCustomers() {
     await qc.invalidateQueries({ queryKey: ['credit-entries'] });
   }
 
+  // A Credit-method cafe order is debt the same way a Credit-method table
+  // session is -- calcCustomerBalance only needs {method, customerId,
+  // amount}, so orders (which carry `total` instead of `amount`) are mapped
+  // into that shape and merged in here rather than teaching the shared
+  // money.ts helper about a second, cafe-specific collection.
+  const balanceSessions = useMemo(() => {
+    const orders = (ordersQuery.data ?? []).map(o => ({
+      method: o.method, customerId: o.customerId, amount: o.total,
+    }));
+    return [...(sessionsQuery.data ?? []), ...orders];
+  }, [sessionsQuery.data, ordersQuery.data]);
+
   function balanceFor(customerId: string): number {
-    return calcCustomerBalance(sessionsQuery.data ?? [], historyQuery.data ?? [], customerId);
+    return calcCustomerBalance(balanceSessions, historyQuery.data ?? [], customerId);
   }
 
   return {

@@ -83,3 +83,71 @@ pub struct CreditEntry {
     pub amount: i64,
     pub updated_at: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductCategory {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Product {
+    pub id: String,
+    pub category_id: String,
+    pub name: String,
+    pub price: i64,
+    pub cost: Option<i64>,
+    pub stock_qty: i64,
+    pub low_stock_threshold: i64,
+    pub barcode: Option<String>,
+    pub active: bool,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Order {
+    pub id: String,
+    pub method: String,
+    pub total: i64,
+    pub customer_id: Option<String>,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderItem {
+    pub id: String,
+    pub order_id: String,
+    pub product_id: String,
+    pub qty: i64,
+    pub unit_price: i64,
+    pub line_total: i64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StockMovement {
+    pub id: String,
+    pub product_id: String,
+    pub delta: i64,
+    pub reason: String,
+    pub note: Option<String>,
+    pub updated_at: String,
+}
+
+// The full receipt returned by create_order -- the order row plus its line
+// items, so the frontend can render a confirmation without a second round
+// trip.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderWithItems {
+    #[serde(flatten)]
+    pub order: Order,
+    pub items: Vec<OrderItem>,
+}

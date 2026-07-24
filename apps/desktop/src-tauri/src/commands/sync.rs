@@ -224,6 +224,98 @@ async fn apply_one(
             .execute(&mut **tx)
             .await?;
         }
+        "productCategories" => {
+            sqlx::query(
+                "INSERT INTO product_categories (id, name) VALUES (?, ?)
+                 ON CONFLICT(id) DO UPDATE SET name = excluded.name",
+            )
+            .bind(&id)
+            .bind(row["name"].as_str().unwrap_or_default())
+            .execute(&mut **tx)
+            .await?;
+        }
+        "products" => {
+            if !is_newer(tx, "products", &id, row).await? {
+                return Ok(());
+            }
+            sqlx::query(
+                "INSERT INTO products (id, category_id, name, price, cost, stock_qty, low_stock_threshold, barcode, active, updated_at, deleted_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET category_id = excluded.category_id, name = excluded.name,
+                   price = excluded.price, cost = excluded.cost, stock_qty = excluded.stock_qty,
+                   low_stock_threshold = excluded.low_stock_threshold, barcode = excluded.barcode,
+                   active = excluded.active, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
+            )
+            .bind(&id)
+            .bind(row["categoryId"].as_str().unwrap_or_default())
+            .bind(row["name"].as_str().unwrap_or_default())
+            .bind(row["price"].as_i64().unwrap_or(0))
+            .bind(row["cost"].as_i64())
+            .bind(row["stockQty"].as_i64().unwrap_or(0))
+            .bind(row["lowStockThreshold"].as_i64().unwrap_or(0))
+            .bind(row["barcode"].as_str())
+            .bind(row["active"].as_bool().unwrap_or(true))
+            .bind(row["updatedAt"].as_str().unwrap_or_default())
+            .bind(row["deletedAt"].as_str())
+            .execute(&mut **tx)
+            .await?;
+        }
+        "orders" => {
+            if !is_newer(tx, "orders", &id, row).await? {
+                return Ok(());
+            }
+            sqlx::query(
+                "INSERT INTO orders (id, method, total, customer_id, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET method = excluded.method, total = excluded.total,
+                   customer_id = excluded.customer_id, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
+            )
+            .bind(&id)
+            .bind(row["method"].as_str().unwrap_or_default())
+            .bind(row["total"].as_i64().unwrap_or(0))
+            .bind(row["customerId"].as_str())
+            .bind(row["updatedAt"].as_str().unwrap_or_default())
+            .bind(row["deletedAt"].as_str())
+            .execute(&mut **tx)
+            .await?;
+        }
+        "orderItems" => {
+            if !is_newer(tx, "order_items", &id, row).await? {
+                return Ok(());
+            }
+            sqlx::query(
+                "INSERT INTO order_items (id, order_id, product_id, qty, unit_price, line_total, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET order_id = excluded.order_id, product_id = excluded.product_id,
+                   qty = excluded.qty, unit_price = excluded.unit_price, line_total = excluded.line_total,
+                   updated_at = excluded.updated_at",
+            )
+            .bind(&id)
+            .bind(row["orderId"].as_str().unwrap_or_default())
+            .bind(row["productId"].as_str().unwrap_or_default())
+            .bind(row["qty"].as_i64().unwrap_or(0))
+            .bind(row["unitPrice"].as_i64().unwrap_or(0))
+            .bind(row["lineTotal"].as_i64().unwrap_or(0))
+            .bind(row["updatedAt"].as_str().unwrap_or_default())
+            .execute(&mut **tx)
+            .await?;
+        }
+        "stockMovements" => {
+            if !is_newer(tx, "stock_movements", &id, row).await? {
+                return Ok(());
+            }
+            sqlx::query(
+                "INSERT INTO stock_movements (id, product_id, delta, reason, note, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET product_id = excluded.product_id, delta = excluded.delta,
+                   reason = excluded.reason, note = excluded.note, updated_at = excluded.updated_at",
+            )
+            .bind(&id)
+            .bind(row["productId"].as_str().unwrap_or_default())
+            .bind(row["delta"].as_i64().unwrap_or(0))
+            .bind(row["reason"].as_str().unwrap_or_default())
+            .bind(row["note"].as_str())
+            .bind(row["updatedAt"].as_str().unwrap_or_default())
+            .execute(&mut **tx)
+            .await?;
+        }
         _ => {}
     }
     Ok(())

@@ -94,6 +94,53 @@ export interface BackupInfo {
   sizeBytes: number;
 }
 
+export interface ProductCategoryRow {
+  id: string;
+  name: string;
+}
+
+export interface ProductRow {
+  id: string;
+  categoryId: string;
+  name: string;
+  price: number;
+  cost: number | null;
+  stockQty: number;
+  lowStockThreshold: number;
+  barcode: string | null;
+  active: boolean;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface OrderRow {
+  id: string;
+  method: 'Cash' | 'Card' | 'Credit';
+  total: number;
+  customerId: string | null;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface OrderItemRow {
+  id: string;
+  orderId: string;
+  productId: string;
+  qty: number;
+  unitPrice: number;
+  lineTotal: number;
+  updatedAt: string;
+}
+
+export interface OrderWithItems extends OrderRow {
+  items: OrderItemRow[];
+}
+
+export interface CartItemInput {
+  productId: string;
+  qty: number;
+}
+
 // Thin typed wrappers over Tauri's invoke() -- the only place in the TS
 // codebase that talks to the Rust backend. Every call here corresponds 1:1
 // to a #[tauri::command] in apps/desktop/src-tauri/src/.
@@ -163,4 +210,33 @@ export const commands = {
   drainOutbox: () => invoke<OutboxEntryRow[]>('drain_outbox'),
   deleteOutboxEntries: (ids: number[]) => invoke<void>('delete_outbox_entries', { ids }),
   applyPulledRows: (rows: PulledRow[]) => invoke<void>('apply_pulled_rows', { rows }),
+
+  // Cafe: product categories/products are admin-managed ('productManagement'
+  // permission); create_order is the cashier-facing checkout ('cafe'
+  // permission).
+  listProductCategories: () => invoke<ProductCategoryRow[]>('list_product_categories'),
+  createProductCategory: (name: string) => invoke<ProductCategoryRow>('create_product_category', { name }),
+  listProducts: () => invoke<ProductRow[]>('list_products'),
+  createProduct: (
+    categoryId: string,
+    name: string,
+    price: number,
+    cost: number | null,
+    lowStockThreshold: number,
+    barcode: string | null,
+  ) => invoke<ProductRow>('create_product', { categoryId, name, price, cost, lowStockThreshold, barcode }),
+  updateProduct: (
+    id: string,
+    name: string,
+    price: number,
+    cost: number | null,
+    lowStockThreshold: number,
+    barcode: string | null,
+    active: boolean,
+  ) => invoke<ProductRow>('update_product', { id, name, price, cost, lowStockThreshold, barcode, active }),
+  adjustStock: (productId: string, delta: number, reason: string, note: string | null) =>
+    invoke<ProductRow>('adjust_stock', { productId, delta, reason, note }),
+  createOrder: (items: CartItemInput[], method: string, customerId: string | null) =>
+    invoke<OrderWithItems>('create_order', { items, method, customerId }),
+  listAllOrders: () => invoke<OrderRow[]>('list_all_orders'),
 };

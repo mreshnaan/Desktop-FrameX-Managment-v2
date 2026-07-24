@@ -18,6 +18,8 @@ import UserManagementView from './components/views/UserManagementView';
 import RoleManagementView from './components/views/RoleManagementView';
 import CategoryManagementView from './components/views/CategoryManagementView';
 import BackupSettingsView from './components/views/BackupSettingsView';
+import CafeView from './components/views/CafeView';
+import ProductManagementView from './components/views/ProductManagementView';
 import type { PermissionKey } from '@/lib/shared';
 
 // networkMode defaults to 'online' in TanStack Query, which pauses queries
@@ -33,13 +35,13 @@ const queryClient = new QueryClient({
   },
 });
 
-// Defense in depth: the sidebar (Sidebar.tsx) already hides admin-only nav
-// buttons for roles without the matching permission, but that alone doesn't
-// stop a view from being reached some other way (e.g. state left over from
-// a role change, a bug elsewhere). The real enforcement is server-side
+// Defense in depth: the sidebar (Sidebar.tsx) already hides nav buttons for
+// roles without the matching permission, but that alone doesn't stop a view
+// from being reached some other way (e.g. state left over from a role
+// change, a bug elsewhere). The real enforcement is server-side
 // (`requireView` on the API), but this avoids rendering a confusing
 // blank/broken screen client-side if it's ever reached.
-function AdminGate({ permissions, requires, children }: {
+function PermissionGate({ permissions, requires, children }: {
   permissions: string[] | undefined;
   requires: PermissionKey;
   children: React.ReactNode;
@@ -77,25 +79,35 @@ function AuthenticatedApp() {
       {view === 'creditManagement' && <CreditManagementView />}
       {view === 'expenses' && <ExpensesView date={date} onDateChange={setDate} />}
       {view === 'rateManagement' && <RateManagementView />}
+      {view === 'cafe' && (
+        <PermissionGate permissions={permissions} requires="cafe">
+          <CafeView />
+        </PermissionGate>
+      )}
       {view === 'userManagement' && (
-        <AdminGate permissions={permissions} requires="userManagement">
+        <PermissionGate permissions={permissions} requires="userManagement">
           <UserManagementView />
-        </AdminGate>
+        </PermissionGate>
       )}
       {view === 'roleManagement' && (
-        <AdminGate permissions={permissions} requires="roleManagement">
+        <PermissionGate permissions={permissions} requires="roleManagement">
           <RoleManagementView />
-        </AdminGate>
+        </PermissionGate>
       )}
       {view === 'categoryManagement' && (
-        <AdminGate permissions={permissions} requires="categoryManagement">
+        <PermissionGate permissions={permissions} requires="categoryManagement">
           <CategoryManagementView />
-        </AdminGate>
+        </PermissionGate>
+      )}
+      {view === 'productManagement' && (
+        <PermissionGate permissions={permissions} requires="productManagement">
+          <ProductManagementView />
+        </PermissionGate>
       )}
       {view === 'backupRestore' && (
-        <AdminGate permissions={permissions} requires="backupRestore">
+        <PermissionGate permissions={permissions} requires="backupRestore">
           <BackupSettingsView />
-        </AdminGate>
+        </PermissionGate>
       )}
     </AppShell>
   );

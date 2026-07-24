@@ -14,7 +14,9 @@ export type PermissionKey =
   | 'userManagement'
   | 'roleManagement'
   | 'categoryManagement'
-  | 'backupRestore';
+  | 'backupRestore'
+  | 'cafe'
+  | 'productManagement';
 
 export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
   { key: 'dailySales', label: 'Daily Sales' },
@@ -23,9 +25,11 @@ export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
   { key: 'creditManagement', label: 'Credit Management' },
   { key: 'expenses', label: 'Expenses' },
   { key: 'rateManagement', label: 'Rate Management' },
+  { key: 'cafe', label: 'Cafe' },
   { key: 'userManagement', label: 'User Management' },
   { key: 'roleManagement', label: 'Role Management' },
   { key: 'categoryManagement', label: 'Category & Station Management' },
+  { key: 'productManagement', label: 'Product & Stock Management' },
   { key: 'backupRestore', label: 'Backup & Restore' },
 ];
 

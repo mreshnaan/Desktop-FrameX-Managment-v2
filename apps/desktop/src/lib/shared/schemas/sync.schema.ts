@@ -8,6 +8,11 @@ export const SyncTableName = z.enum([
   'rates',
   'categories',
   'stations',
+  'productCategories',
+  'products',
+  'orders',
+  'orderItems',
+  'stockMovements',
 ]);
 
 export const OutboxEntrySchema = z.object({

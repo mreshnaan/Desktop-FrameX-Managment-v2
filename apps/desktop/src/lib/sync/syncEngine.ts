@@ -3,7 +3,10 @@ import { commands, type PulledRow } from '../tauri/commands';
 import { apiFetch, ApiError } from '../api/client';
 
 const CURSOR_KEY = 'cue-room-desktop-sync-cursor';
-const TABLES = ['sessions', 'expenses', 'customers', 'creditEntries', 'rates', 'categories', 'stations'] as const;
+const TABLES = [
+  'sessions', 'expenses', 'customers', 'creditEntries', 'rates', 'categories', 'stations',
+  'productCategories', 'products', 'orders', 'orderItems', 'stockMovements',
+] as const;
 
 interface PullResult {
   sessions: unknown[];
@@ -13,6 +16,11 @@ interface PullResult {
   rates: unknown[];
   categories: unknown[];
   stations: unknown[];
+  productCategories: unknown[];
+  products: unknown[];
+  orders: unknown[];
+  orderItems: unknown[];
+  stockMovements: unknown[];
   serverTime: string;
 }
 

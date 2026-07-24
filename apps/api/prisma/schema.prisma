@@ -7,12 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  OWNER
-  ADMIN
-  CASHIER
-}
-
 enum Method {
   Cash
   Card
@@ -24,14 +18,45 @@ enum CreditType {
   PAYMENT_RECEIVED
 }
 
+model Permission {
+  id    String           @id @default(uuid())
+  key   String           @unique
+  label String
+  roles RolePermission[]
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  // System roles (OWNER/ADMIN/CASHIER) are seeded once and protected from
+  // edit/delete -- matches FrameX's role model. Everything else is a custom
+  // role an admin created through the role-management UI.
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  permissions RolePermission[]
+  users       User[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
 model User {
-  id           String   @id @default(uuid())
-  username     String   @unique
-  passwordHash String
-  name         String
-  role         Role
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(uuid())
+  username  String   @unique
+  // PIN-based auth (matches FrameX) replaces the earlier password login for
+  // both apps/web and apps/desktop -- bcrypt-hashed, same as passwordHash was.
+  pinHash   String
+  name      String
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Category {

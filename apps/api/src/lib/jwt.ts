@@ -1,8 +1,12 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../env';
-import type { Role } from '../shared/index';
 
-export interface AccessTokenPayload { sub: string; role: Role }
+export interface AccessTokenPayload {
+  sub: string;
+  roleId: string;
+  roleName: string;
+  permissions: string[];
+}
 
 export function signAccessToken(payload: AccessTokenPayload): string {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {

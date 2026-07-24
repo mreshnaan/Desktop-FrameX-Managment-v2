@@ -1,18 +1,41 @@
 import { prisma } from '../db';
 import { verifyPassword } from '../lib/password';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../lib/jwt';
-import type { Role } from '../shared/index';
 
-export async function login(username: string, password: string) {
-  const user = await prisma.user.findUnique({ where: { username } });
+const roleInclude = { role: { include: { permissions: { include: { permission: true } } } } } as const;
+
+function toPublicUser(user: {
+  id: string;
+  username: string;
+  name: string;
+  role: { id: string; name: string; permissions: { permission: { key: string } }[] };
+}) {
+  const permissions = user.role.permissions.map((rp) => rp.permission.key);
+  return {
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    role: { id: user.role.id, name: user.role.name },
+    permissions,
+  };
+}
+
+export async function login(username: string, pin: string) {
+  const user = await prisma.user.findUnique({ where: { username }, include: roleInclude });
   if (!user) throw new Error('Invalid credentials');
-  const ok = await verifyPassword(password, user.passwordHash);
+  const ok = await verifyPassword(pin, user.pinHash);
   if (!ok) throw new Error('Invalid credentials');
 
+  const publicUser = toPublicUser(user);
   return {
-    accessToken: signAccessToken({ sub: user.id, role: user.role as Role }),
+    accessToken: signAccessToken({
+      sub: user.id,
+      roleId: publicUser.role.id,
+      roleName: publicUser.role.name,
+      permissions: publicUser.permissions,
+    }),
     refreshToken: signRefreshToken({ sub: user.id }),
-    user: { id: user.id, username: user.username, name: user.name, role: user.role as Role },
+    user: publicUser,
   };
 }
 
@@ -27,11 +50,17 @@ export async function refreshToken(token: string) {
   // that to a 401.
   const { sub } = verifyRefreshToken(token);
   // The user could have been deleted since the refresh token was issued.
-  const user = await prisma.user.findUnique({ where: { id: sub } });
+  const user = await prisma.user.findUnique({ where: { id: sub }, include: roleInclude });
   if (!user) throw new Error('Invalid refresh token');
 
+  const publicUser = toPublicUser(user);
   return {
-    accessToken: signAccessToken({ sub: user.id, role: user.role as Role }),
-    user: { id: user.id, username: user.username, name: user.name, role: user.role as Role },
+    accessToken: signAccessToken({
+      sub: user.id,
+      roleId: publicUser.role.id,
+      roleName: publicUser.role.name,
+      permissions: publicUser.permissions,
+    }),
+    user: publicUser,
   };
 }

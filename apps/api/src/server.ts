@@ -3,6 +3,7 @@ import cors from 'cors';
 import { env } from './env';
 import { authRouter } from './routes/auth.routes';
 import { usersRouter } from './routes/users.routes';
+import { rolesRouter } from './routes/roles.routes';
 import { syncRouter } from './routes/sync.routes';
 
 export const app = express();
@@ -11,6 +12,7 @@ app.use(express.json());
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/auth', authRouter);
 app.use('/users', usersRouter);
+app.use('/roles', rolesRouter);
 app.use('/sync', syncRouter);
 
 if (process.env.NODE_ENV !== 'test') {

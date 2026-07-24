@@ -1,8 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
-import { verifyAccessToken } from '../lib/jwt';
+import { verifyAccessToken, type AccessTokenPayload } from '../lib/jwt';
 
 export interface AuthedRequest extends Request {
-  user?: { sub: string; role: 'OWNER' | 'ADMIN' | 'CASHIER' };
+  user?: AccessTokenPayload;
 }
 
 export function authenticate(req: AuthedRequest, res: Response, next: NextFunction) {

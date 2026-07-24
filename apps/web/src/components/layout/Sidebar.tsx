@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import { Calendar, BarChart3, Users, CreditCard, Receipt, Settings, ShieldCheck } from 'lucide-react';
-import { hasAccess, type ViewKey } from '@/lib/shared';
+import { hasPermission, type PermissionKey as ViewKey } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
 import {
   Sidebar as SidebarPrimitive,
@@ -44,8 +44,8 @@ interface AppSidebarProps {
 
 export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
   const { state } = useAuth();
-  const role = state.user?.role;
-  const visibleItems = role ? NAV_ITEMS.filter(item => hasAccess(role, item.key)) : [];
+  const permissions = state.user?.permissions;
+  const visibleItems = permissions ? NAV_ITEMS.filter(item => hasPermission(permissions, item.key)) : [];
 
   return (
     <SidebarPrimitive collapsible="icon">

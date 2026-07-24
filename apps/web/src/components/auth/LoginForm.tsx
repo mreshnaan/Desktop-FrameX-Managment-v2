@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { LoginSchema, type LoginInput } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldGroup, FieldLabel, FieldError } from '@/components/ui/field';
+import { PinInput } from '@/components/ui/pin-input';
 
 export default function LoginForm() {
   const { login } = useAuth();
@@ -15,16 +16,17 @@ export default function LoginForm() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({
     resolver: zodResolver(LoginSchema),
-    defaultValues: { username: '', password: '' },
+    defaultValues: { username: '', pin: '' },
   });
 
   async function onSubmit(data: LoginInput) {
     setFormError(null);
     try {
-      await login(data.username, data.password);
+      await login(data.username, data.pin);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Invalid credentials');
     }
@@ -52,16 +54,20 @@ export default function LoginForm() {
                 <FieldError errors={errors.username ? [errors.username] : undefined} />
               </Field>
               <Field>
-                <FieldLabel htmlFor="login-password">Password</FieldLabel>
-                <Input
-                  id="login-password"
-                  type="password"
-                  autoComplete="current-password"
-                  placeholder="Password"
-                  aria-invalid={!!errors.password}
-                  {...register('password')}
+                <FieldLabel htmlFor="login-pin">PIN</FieldLabel>
+                <Controller
+                  name="pin"
+                  control={control}
+                  render={({ field }) => (
+                    <PinInput
+                      id="login-pin"
+                      value={field.value}
+                      onChange={field.onChange}
+                      aria-invalid={!!errors.pin}
+                    />
+                  )}
                 />
-                <FieldError errors={errors.password ? [errors.password] : undefined} />
+                <FieldError errors={errors.pin ? [errors.pin] : undefined} />
               </Field>
             </FieldGroup>
             {formError && (

@@ -1,17 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { hasAccess } from '@/lib/shared';
+import { hasPermission } from '@/lib/shared';
 
-describe('hasAccess', () => {
-  it('grants owner and admin every view including user management', () => {
-    expect(hasAccess('OWNER', 'userManagement')).toBe(true);
-    expect(hasAccess('ADMIN', 'userManagement')).toBe(true);
-    expect(hasAccess('OWNER', 'rateManagement')).toBe(true);
+describe('hasPermission', () => {
+  it('grants access when the permission key is present in the list', () => {
+    const ownerPermissions = ['dailySales', 'rateManagement', 'userManagement', 'roleManagement'];
+    expect(hasPermission(ownerPermissions, 'userManagement')).toBe(true);
+    expect(hasPermission(ownerPermissions, 'rateManagement')).toBe(true);
   });
 
-  it('grants cashier every business view but not user management', () => {
-    expect(hasAccess('CASHIER', 'dailySales')).toBe(true);
-    expect(hasAccess('CASHIER', 'rateManagement')).toBe(true);
-    expect(hasAccess('CASHIER', 'creditManagement')).toBe(true);
-    expect(hasAccess('CASHIER', 'userManagement')).toBe(false);
+  it('denies access when the permission key is absent', () => {
+    const cashierPermissions = ['dailySales', 'rateManagement', 'creditManagement'];
+    expect(hasPermission(cashierPermissions, 'dailySales')).toBe(true);
+    expect(hasPermission(cashierPermissions, 'creditManagement')).toBe(true);
+    expect(hasPermission(cashierPermissions, 'userManagement')).toBe(false);
   });
 });

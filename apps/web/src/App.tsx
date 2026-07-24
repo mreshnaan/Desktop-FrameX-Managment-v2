@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
-import { hasAccess, todayStr } from '@/lib/shared';
+import { hasPermission, todayStr } from '@/lib/shared';
 import { AuthProvider } from '@/lib/auth/AuthContext';
 import { useAuth } from '@/lib/auth/useAuth';
 import { startSyncEngine, runBootstrapPull } from '@/lib/sync/syncEngine';
@@ -44,7 +44,7 @@ function AuthenticatedApp() {
   // from a role change, a bug elsewhere). The real enforcement is server-side
   // (`requireView` on the API), but this check avoids rendering a confusing
   // blank/broken screen client-side if it's ever reached.
-  const role = state.user?.role;
+  const permissions = state.user?.permissions;
 
   return (
     <AppShell
@@ -67,7 +67,7 @@ function AuthenticatedApp() {
       {view === 'expenses' && <ExpensesView date={date} onDateChange={setDate} />}
       {view === 'rateManagement' && <RateManagementView />}
       {view === 'userManagement' &&
-        (role && hasAccess(role, 'userManagement') ? (
+        (permissions && hasPermission(permissions, 'userManagement') ? (
           <UserManagementView />
         ) : (
           <div className="p-4 text-sm text-muted-foreground">

@@ -1,6 +1,34 @@
 import { PrismaClient } from '@prisma/client';
+import { PERMISSION_KEYS, SYSTEM_ROLE_SEED } from '../src/shared/constants/roles';
 
 const prisma = new PrismaClient();
+
+async function seedRolesAndPermissions() {
+  const permissionIdByKey = new Map<string, string>();
+  for (const p of PERMISSION_KEYS) {
+    const row = await prisma.permission.upsert({
+      where: { key: p.key },
+      create: { key: p.key, label: p.label },
+      update: { label: p.label },
+    });
+    permissionIdByKey.set(p.key, row.id);
+  }
+
+  for (const roleSeed of SYSTEM_ROLE_SEED) {
+    const role = await prisma.role.upsert({
+      where: { name: roleSeed.name },
+      create: { name: roleSeed.name, isSystem: true },
+      update: { isSystem: true },
+    });
+    const permissionIds = roleSeed.permissions.map((key) => permissionIdByKey.get(key)!);
+    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
+    await prisma.rolePermission.createMany({
+      data: permissionIds.map((permissionId) => ({ roleId: role.id, permissionId })),
+    });
+  }
+
+  console.log(`Seeded ${PERMISSION_KEYS.length} permissions and ${SYSTEM_ROLE_SEED.length} system roles.`);
+}
 
 interface CategorySeed {
   name: string;
@@ -35,6 +63,8 @@ const SEED_CATEGORIES: CategorySeed[] = [
 ];
 
 async function main() {
+  await seedRolesAndPermissions();
+
   for (const seed of SEED_CATEGORIES) {
     const category = await prisma.category.upsert({
       where: { name: seed.name },

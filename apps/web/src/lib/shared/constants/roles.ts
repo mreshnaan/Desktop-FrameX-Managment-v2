@@ -1,25 +1,34 @@
-export const ROLES = ['OWNER', 'ADMIN', 'CASHIER'] as const;
-export type Role = (typeof ROLES)[number];
+// Roles are dynamic, DB-backed data (apps/api's Role/Permission tables) --
+// this file only carries the static permission-key list, shared with
+// apps/api so both sides agree on valid keys. Access checks are
+// permission-based against the permission list embedded in the JWT at
+// login, not a role-name switch.
 
-export type ViewKey =
+export type PermissionKey =
   | 'dailySales'
   | 'monthlySales'
   | 'customers'
   | 'creditManagement'
   | 'expenses'
   | 'rateManagement'
-  | 'userManagement';
+  | 'userManagement'
+  | 'roleManagement'
+  | 'categoryManagement'
+  | 'backupRestore';
 
-const BUSINESS_VIEWS: ViewKey[] = [
-  'dailySales', 'monthlySales', 'customers', 'creditManagement', 'expenses', 'rateManagement',
+export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
+  { key: 'dailySales', label: 'Daily Sales' },
+  { key: 'monthlySales', label: 'Monthly Sales' },
+  { key: 'customers', label: 'Customers' },
+  { key: 'creditManagement', label: 'Credit Management' },
+  { key: 'expenses', label: 'Expenses' },
+  { key: 'rateManagement', label: 'Rate Management' },
+  { key: 'userManagement', label: 'User Management' },
+  { key: 'roleManagement', label: 'Role Management' },
+  { key: 'categoryManagement', label: 'Category & Station Management' },
+  { key: 'backupRestore', label: 'Backup & Restore' },
 ];
 
-export const ROLE_PERMISSIONS: Record<Role, ViewKey[]> = {
-  OWNER: [...BUSINESS_VIEWS, 'userManagement'],
-  ADMIN: [...BUSINESS_VIEWS, 'userManagement'],
-  CASHIER: [...BUSINESS_VIEWS],
-};
-
-export function hasAccess(role: Role, view: ViewKey): boolean {
-  return ROLE_PERMISSIONS[role].includes(view);
+export function hasPermission(permissions: string[], key: PermissionKey): boolean {
+  return permissions.includes(key);
 }

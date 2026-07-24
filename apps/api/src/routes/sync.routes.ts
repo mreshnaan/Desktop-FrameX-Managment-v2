@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { SyncPushSchema } from '../shared/index';
+import { SyncPullQuerySchema, SyncPushSchema } from '../shared/index';
 import { authenticate } from '../middleware/auth';
 import { applyPush, pullSince } from '../services/sync.service';
 
@@ -17,6 +17,10 @@ syncRouter.post('/push', async (req, res) => {
 });
 
 syncRouter.get('/pull', async (req, res) => {
-  const since = typeof req.query.since === 'string' ? req.query.since : undefined;
-  res.json(await pullSince(since));
+  const parsed = SyncPullQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  res.json(await pullSince(parsed.data.since));
 });

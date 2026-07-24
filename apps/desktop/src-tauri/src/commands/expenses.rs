@@ -6,19 +6,20 @@ use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
-#[tauri::command]
-pub async fn list_expenses_for_date(
-    pool: State<'_, SqlitePool>,
-    date: String,
-) -> Result<Vec<Expense>, String> {
+pub(crate) async fn do_list_expenses_for_date(pool: &SqlitePool, date: String) -> Result<Vec<Expense>, String> {
     sqlx::query_as::<_, Expense>(
         "SELECT id, date, description, amount, method, updated_at, deleted_at
          FROM expenses WHERE date = ? AND deleted_at IS NULL",
     )
     .bind(date)
-    .fetch_all(pool.inner())
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_expenses_for_date(pool: State<'_, SqlitePool>, date: String) -> Result<Vec<Expense>, String> {
+    do_list_expenses_for_date(pool.inner(), date).await
 }
 
 fn payload(e: &Expense) -> serde_json::Value {
@@ -28,8 +29,7 @@ fn payload(e: &Expense) -> serde_json::Value {
     })
 }
 
-#[tauri::command]
-pub async fn create_expense(pool: State<'_, SqlitePool>, date: String) -> Result<Expense, String> {
+pub(crate) async fn do_create_expense(pool: &SqlitePool, date: String) -> Result<Expense, String> {
     let expense = Expense {
         id: Uuid::new_v4().to_string(),
         date,
@@ -63,8 +63,12 @@ pub async fn create_expense(pool: State<'_, SqlitePool>, date: String) -> Result
 }
 
 #[tauri::command]
-pub async fn update_expense(
-    pool: State<'_, SqlitePool>,
+pub async fn create_expense(pool: State<'_, SqlitePool>, date: String) -> Result<Expense, String> {
+    do_create_expense(pool.inner(), date).await
+}
+
+pub(crate) async fn do_update_expense(
+    pool: &SqlitePool,
     id: String,
     description: Option<String>,
     amount: Option<i64>,
@@ -103,7 +107,17 @@ pub async fn update_expense(
 }
 
 #[tauri::command]
-pub async fn delete_expense(pool: State<'_, SqlitePool>, id: String) -> Result<(), String> {
+pub async fn update_expense(
+    pool: State<'_, SqlitePool>,
+    id: String,
+    description: Option<String>,
+    amount: Option<i64>,
+    method: Option<String>,
+) -> Result<Expense, String> {
+    do_update_expense(pool.inner(), id, description, amount, method).await
+}
+
+pub(crate) async fn do_delete_expense(pool: &SqlitePool, id: String) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
@@ -123,4 +137,47 @@ pub async fn delete_expense(pool: State<'_, SqlitePool>, id: String) -> Result<(
         .map_err(|e| e.to_string())?;
 
     tx.commit().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_expense(pool: State<'_, SqlitePool>, id: String) -> Result<(), String> {
+    do_delete_expense(pool.inner(), id).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_helpers::setup_test_db;
+
+    #[tokio::test]
+    async fn creates_an_expense_with_zero_amount_for_a_date() {
+        let pool = setup_test_db().await;
+        let expense = do_create_expense(&pool, "2026-07-25".to_string()).await.unwrap();
+
+        assert_eq!(expense.amount, 0);
+        let listed = do_list_expenses_for_date(&pool, "2026-07-25".to_string()).await.unwrap();
+        assert_eq!(listed.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn updates_only_the_provided_fields() {
+        let pool = setup_test_db().await;
+        let expense = do_create_expense(&pool, "2026-07-25".to_string()).await.unwrap();
+
+        let updated = do_update_expense(&pool, expense.id, Some("Rent".to_string()), Some(500), None).await.unwrap();
+
+        assert_eq!(updated.description, "Rent");
+        assert_eq!(updated.amount, 500);
+        assert_eq!(updated.method, "Cash", "unpatched fields must be left unchanged");
+    }
+
+    #[tokio::test]
+    async fn soft_deletes_and_excludes_from_the_day_list() {
+        let pool = setup_test_db().await;
+        let expense = do_create_expense(&pool, "2026-07-25".to_string()).await.unwrap();
+
+        do_delete_expense(&pool, expense.id).await.unwrap();
+
+        assert!(do_list_expenses_for_date(&pool, "2026-07-25".to_string()).await.unwrap().is_empty());
+    }
 }

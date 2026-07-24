@@ -8,15 +8,35 @@ use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
-// Used by the customer-balance calculation (useCustomers.ts), which needs
-// every Credit session for a customer regardless of date, not just one day.
-#[tauri::command]
-pub async fn list_all_sessions(pool: State<'_, SqlitePool>) -> Result<Vec<Session>, String> {
+pub(crate) async fn do_list_all_sessions(pool: &SqlitePool) -> Result<Vec<Session>, String> {
     sqlx::query_as::<_, Session>(
         "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at
          FROM sessions WHERE deleted_at IS NULL",
     )
-    .fetch_all(pool.inner())
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())
+}
+
+// Used by the customer-balance calculation (useCustomers.ts), which needs
+// every Credit session for a customer regardless of date, not just one day.
+#[tauri::command]
+pub async fn list_all_sessions(pool: State<'_, SqlitePool>) -> Result<Vec<Session>, String> {
+    do_list_all_sessions(pool.inner()).await
+}
+
+pub(crate) async fn do_list_sessions_between(
+    pool: &SqlitePool,
+    start_date: String,
+    end_date: String,
+) -> Result<Vec<Session>, String> {
+    sqlx::query_as::<_, Session>(
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at
+         FROM sessions WHERE date >= ? AND date <= ? AND deleted_at IS NULL",
+    )
+    .bind(start_date)
+    .bind(end_date)
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())
 }
@@ -29,30 +49,23 @@ pub async fn list_sessions_between(
     start_date: String,
     end_date: String,
 ) -> Result<Vec<Session>, String> {
-    sqlx::query_as::<_, Session>(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at
-         FROM sessions WHERE date >= ? AND date <= ? AND deleted_at IS NULL",
-    )
-    .bind(start_date)
-    .bind(end_date)
-    .fetch_all(pool.inner())
-    .await
-    .map_err(|e| e.to_string())
+    do_list_sessions_between(pool.inner(), start_date, end_date).await
 }
 
-#[tauri::command]
-pub async fn list_sessions_for_date(
-    pool: State<'_, SqlitePool>,
-    date: String,
-) -> Result<Vec<Session>, String> {
+pub(crate) async fn do_list_sessions_for_date(pool: &SqlitePool, date: String) -> Result<Vec<Session>, String> {
     sqlx::query_as::<_, Session>(
         "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at
          FROM sessions WHERE date = ? AND deleted_at IS NULL",
     )
     .bind(date)
-    .fetch_all(pool.inner())
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_sessions_for_date(pool: State<'_, SqlitePool>, date: String) -> Result<Vec<Session>, String> {
+    do_list_sessions_for_date(pool.inner(), date).await
 }
 
 fn session_payload(s: &Session) -> serde_json::Value {
@@ -63,9 +76,8 @@ fn session_payload(s: &Session) -> serde_json::Value {
     })
 }
 
-#[tauri::command]
-pub async fn create_session(
-    pool: State<'_, SqlitePool>,
+pub(crate) async fn do_create_session(
+    pool: &SqlitePool,
     station_id: String,
     category_id: String,
     billing_type: String,
@@ -75,7 +87,7 @@ pub async fn create_session(
         let rate: Option<(Option<i64>,)> =
             sqlx::query_as("SELECT frame_rate FROM rates WHERE category_id = ?")
                 .bind(&category_id)
-                .fetch_optional(pool.inner())
+                .fetch_optional(pool)
                 .await
                 .map_err(|e| e.to_string())?;
         calc_frame_amount(rate.and_then(|r| r.0).unwrap_or(0))
@@ -122,7 +134,18 @@ pub async fn create_session(
     Ok(session)
 }
 
-#[derive(Debug, Deserialize)]
+#[tauri::command]
+pub async fn create_session(
+    pool: State<'_, SqlitePool>,
+    station_id: String,
+    category_id: String,
+    billing_type: String,
+    date: String,
+) -> Result<Session, String> {
+    do_create_session(pool.inner(), station_id, category_id, billing_type, date).await
+}
+
+#[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionPatch {
     pub start: Option<String>,
@@ -132,12 +155,7 @@ pub struct SessionPatch {
     pub customer_id: Option<Option<String>>,
 }
 
-#[tauri::command]
-pub async fn update_session(
-    pool: State<'_, SqlitePool>,
-    id: String,
-    patch: SessionPatch,
-) -> Result<Session, String> {
+pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: SessionPatch) -> Result<Session, String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let mut existing: Session = sqlx::query_as(
@@ -204,7 +222,11 @@ pub async fn update_session(
 }
 
 #[tauri::command]
-pub async fn delete_session(pool: State<'_, SqlitePool>, id: String) -> Result<(), String> {
+pub async fn update_session(pool: State<'_, SqlitePool>, id: String, patch: SessionPatch) -> Result<Session, String> {
+    do_update_session(pool.inner(), id, patch).await
+}
+
+pub(crate) async fn do_delete_session(pool: &SqlitePool, id: String) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
@@ -224,4 +246,121 @@ pub async fn delete_session(pool: State<'_, SqlitePool>, id: String) -> Result<(
         .map_err(|e| e.to_string())?;
 
     tx.commit().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_session(pool: State<'_, SqlitePool>, id: String) -> Result<(), String> {
+    do_delete_session(pool.inner(), id).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::categories::do_create_category;
+    use crate::commands::rates::do_upsert_rate;
+    use crate::commands::stations::do_create_station;
+    use crate::db::test_helpers::setup_test_db;
+
+    async fn seed_time_station(pool: &SqlitePool, hour_rate: i64, half_rate: i64) -> (String, String) {
+        let category = do_create_category(pool, "8-Ball".to_string(), "time".to_string()).await.unwrap();
+        do_upsert_rate(pool, category.id.clone(), Some(hour_rate), Some(half_rate), None).await.unwrap();
+        let station = do_create_station(pool, category.id.clone(), "Table 1".to_string()).await.unwrap();
+        (station.id, category.id)
+    }
+
+    async fn seed_frame_station(pool: &SqlitePool, frame_rate: i64) -> (String, String) {
+        let category = do_create_category(pool, "Snooker".to_string(), "frame".to_string()).await.unwrap();
+        do_upsert_rate(pool, category.id.clone(), None, None, Some(frame_rate)).await.unwrap();
+        let station = do_create_station(pool, category.id.clone(), "Table 1".to_string()).await.unwrap();
+        (station.id, category.id)
+    }
+
+    #[tokio::test]
+    async fn a_frame_session_gets_its_amount_immediately_with_no_start_end() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_frame_station(&pool, 150).await;
+
+        let session = do_create_session(&pool, station_id, category_id, "frame".to_string(), "2026-07-25".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(session.amount, 150);
+        assert_eq!(session.start, "");
+    }
+
+    #[tokio::test]
+    async fn a_time_session_starts_at_zero_and_recalculates_when_start_and_end_are_patched() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 200, 100).await;
+        let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-25".to_string())
+            .await
+            .unwrap();
+        assert_eq!(session.amount, 0);
+
+        let updated = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { start: Some("09:00".to_string()), end: Some("10:30".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+        // 1.5 hours at 200/hr + 100/half-hour = 300, matching money.rs's calc_time_amount tests.
+        assert_eq!(updated.amount, 300);
+    }
+
+    #[tokio::test]
+    async fn patching_only_the_method_does_not_recompute_the_amount() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 200, 100).await;
+        let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-25".to_string())
+            .await
+            .unwrap();
+        let with_time = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { start: Some("09:00".to_string()), end: Some("10:00".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(with_time.amount, 200);
+
+        let updated = do_update_session(
+            &pool,
+            with_time.id,
+            SessionPatch { method: Some("Card".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(updated.amount, 200, "amount must be untouched when neither start nor end is patched");
+        assert_eq!(updated.method, "Card");
+    }
+
+    #[tokio::test]
+    async fn soft_deletes_a_session() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_frame_station(&pool, 150).await;
+        let session = do_create_session(&pool, station_id, category_id, "frame".to_string(), "2026-07-25".to_string())
+            .await
+            .unwrap();
+
+        do_delete_session(&pool, session.id.clone()).await.unwrap();
+
+        let for_date = do_list_sessions_for_date(&pool, "2026-07-25".to_string()).await.unwrap();
+        assert!(for_date.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_sessions_between_only_returns_sessions_in_range() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_frame_station(&pool, 150).await;
+        do_create_session(&pool, station_id.clone(), category_id.clone(), "frame".to_string(), "2026-07-10".to_string()).await.unwrap();
+        do_create_session(&pool, station_id.clone(), category_id.clone(), "frame".to_string(), "2026-07-20".to_string()).await.unwrap();
+        do_create_session(&pool, station_id, category_id, "frame".to_string(), "2026-08-01".to_string()).await.unwrap();
+
+        let in_july = do_list_sessions_between(&pool, "2026-07-01".to_string(), "2026-07-31".to_string()).await.unwrap();
+
+        assert_eq!(in_july.len(), 2);
+    }
 }

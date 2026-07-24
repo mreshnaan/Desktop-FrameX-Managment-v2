@@ -40,24 +40,24 @@ pub struct OutboxEntryRow {
     pub client_updated_at: String,
 }
 
+pub(crate) async fn do_drain_outbox(pool: &SqlitePool) -> Result<Vec<OutboxEntryRow>, String> {
+    sqlx::query_as::<_, OutboxEntryRow>(
+        "SELECT id, table_name, op, entity_id, payload_json, client_updated_at FROM outbox ORDER BY id",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())
+}
+
 // Called by the TS sync engine (see apps/desktop's syncEngine.ts) before
 // POSTing to /sync/push -- TS owns the HTTP call and timer/online-listener
 // orchestration, Rust only owns the SQLite read/write.
 #[tauri::command]
 pub async fn drain_outbox(pool: State<'_, SqlitePool>) -> Result<Vec<OutboxEntryRow>, String> {
-    sqlx::query_as::<_, OutboxEntryRow>(
-        "SELECT id, table_name, op, entity_id, payload_json, client_updated_at FROM outbox ORDER BY id",
-    )
-    .fetch_all(pool.inner())
-    .await
-    .map_err(|e| e.to_string())
+    do_drain_outbox(pool.inner()).await
 }
 
-#[tauri::command]
-pub async fn delete_outbox_entries(
-    pool: State<'_, SqlitePool>,
-    ids: Vec<i64>,
-) -> Result<(), String> {
+pub(crate) async fn do_delete_outbox_entries(pool: &SqlitePool, ids: Vec<i64>) -> Result<(), String> {
     if ids.is_empty() {
         return Ok(());
     }
@@ -72,6 +72,11 @@ pub async fn delete_outbox_entries(
     tx.commit().await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn delete_outbox_entries(pool: State<'_, SqlitePool>, ids: Vec<i64>) -> Result<(), String> {
+    do_delete_outbox_entries(pool.inner(), ids).await
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PulledRow {
     pub table: String,
@@ -82,11 +87,7 @@ pub struct PulledRow {
 // overwrite (server-authoritative reference data, no updatedAt column --
 // see the design spec); every other table applies last-write-wins by
 // comparing updatedAt, matching apps/web's syncEngine.ts mergeIncoming().
-#[tauri::command]
-pub async fn apply_pulled_rows(
-    pool: State<'_, SqlitePool>,
-    rows: Vec<PulledRow>,
-) -> Result<(), String> {
+pub(crate) async fn do_apply_pulled_rows(pool: &SqlitePool, rows: Vec<PulledRow>) -> Result<(), String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     for entry in rows {
         apply_one(&mut tx, &entry.table, &entry.row)
@@ -94,6 +95,11 @@ pub async fn apply_pulled_rows(
             .map_err(|e| e.to_string())?;
     }
     tx.commit().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn apply_pulled_rows(pool: State<'_, SqlitePool>, rows: Vec<PulledRow>) -> Result<(), String> {
+    do_apply_pulled_rows(pool.inner(), rows).await
 }
 
 async fn apply_one(
@@ -340,4 +346,164 @@ async fn is_newer(
     };
     let incoming_updated_at = row["updatedAt"].as_str().unwrap_or_default();
     Ok(incoming_updated_at > existing_updated_at.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_helpers::setup_test_db;
+    use serde_json::json;
+
+    fn row(table: &str, value: serde_json::Value) -> PulledRow {
+        PulledRow { table: table.to_string(), row: value }
+    }
+
+    #[tokio::test]
+    async fn categories_always_overwrite_even_though_they_have_no_updated_at() {
+        let pool = setup_test_db().await;
+        do_apply_pulled_rows(
+            &pool,
+            vec![row("categories", json!({ "id": "cat-1", "name": "8-Ball", "billingType": "time" }))],
+        )
+        .await
+        .unwrap();
+
+        // A second pull for the same id with a different name must win
+        // unconditionally -- categories have no updatedAt to compare.
+        do_apply_pulled_rows(
+            &pool,
+            vec![row("categories", json!({ "id": "cat-1", "name": "9-Ball", "billingType": "frame" }))],
+        )
+        .await
+        .unwrap();
+
+        let (name, billing_type): (String, String) =
+            sqlx::query_as("SELECT name, billing_type FROM categories WHERE id = ?")
+                .bind("cat-1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(name, "9-Ball");
+        assert_eq!(billing_type, "frame");
+    }
+
+    #[tokio::test]
+    async fn last_write_wins_skips_an_incoming_row_older_than_the_local_one() {
+        let pool = setup_test_db().await;
+        do_apply_pulled_rows(
+            &pool,
+            vec![row(
+                "customers",
+                json!({ "id": "c1", "name": "Server Name", "phone": "", "updatedAt": "2026-07-23T00:00:00Z", "deletedAt": null }),
+            )],
+        )
+        .await
+        .unwrap();
+
+        // Simulate the local row having since been updated to something newer
+        // than the incoming (stale) pull.
+        sqlx::query("UPDATE customers SET name = 'Local Newer Name', updated_at = ? WHERE id = ?")
+            .bind("2026-07-24T00:00:00Z")
+            .bind("c1")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        do_apply_pulled_rows(
+            &pool,
+            vec![row(
+                "customers",
+                json!({ "id": "c1", "name": "Stale Server Name", "phone": "", "updatedAt": "2026-07-23T00:00:00Z", "deletedAt": null }),
+            )],
+        )
+        .await
+        .unwrap();
+
+        let (name,): (String,) = sqlx::query_as("SELECT name FROM customers WHERE id = ?")
+            .bind("c1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(name, "Local Newer Name", "a pulled row older than the local one must not overwrite it");
+    }
+
+    #[tokio::test]
+    async fn last_write_wins_applies_an_incoming_row_newer_than_the_local_one() {
+        let pool = setup_test_db().await;
+        do_apply_pulled_rows(
+            &pool,
+            vec![row(
+                "customers",
+                json!({ "id": "c1", "name": "Old Name", "phone": "", "updatedAt": "2026-07-23T00:00:00Z", "deletedAt": null }),
+            )],
+        )
+        .await
+        .unwrap();
+
+        do_apply_pulled_rows(
+            &pool,
+            vec![row(
+                "customers",
+                json!({ "id": "c1", "name": "New Name", "phone": "", "updatedAt": "2026-07-24T00:00:00Z", "deletedAt": null }),
+            )],
+        )
+        .await
+        .unwrap();
+
+        let (name,): (String,) = sqlx::query_as("SELECT name FROM customers WHERE id = ?")
+            .bind("c1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(name, "New Name");
+    }
+
+    #[tokio::test]
+    async fn a_brand_new_row_is_always_inserted_regardless_of_last_write_wins() {
+        let pool = setup_test_db().await;
+        do_apply_pulled_rows(
+            &pool,
+            vec![row(
+                "customers",
+                json!({ "id": "c1", "name": "Ravi", "phone": "", "updatedAt": "2026-07-23T00:00:00Z", "deletedAt": null }),
+            )],
+        )
+        .await
+        .unwrap();
+
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers").fetch_one(&pool).await.unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn drain_outbox_returns_entries_in_insertion_order() {
+        let pool = setup_test_db().await;
+        let mut tx = pool.begin().await.unwrap();
+        enqueue_outbox_tx(&mut tx, "customers", "upsert", "c1", &json!({ "id": "c1" })).await.unwrap();
+        enqueue_outbox_tx(&mut tx, "customers", "upsert", "c2", &json!({ "id": "c2" })).await.unwrap();
+        tx.commit().await.unwrap();
+
+        let entries = do_drain_outbox(&pool).await.unwrap();
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].entity_id, "c1");
+        assert_eq!(entries[1].entity_id, "c2");
+    }
+
+    #[tokio::test]
+    async fn delete_outbox_entries_removes_only_the_specified_ids() {
+        let pool = setup_test_db().await;
+        let mut tx = pool.begin().await.unwrap();
+        enqueue_outbox_tx(&mut tx, "customers", "upsert", "c1", &json!({ "id": "c1" })).await.unwrap();
+        enqueue_outbox_tx(&mut tx, "customers", "upsert", "c2", &json!({ "id": "c2" })).await.unwrap();
+        tx.commit().await.unwrap();
+        let entries = do_drain_outbox(&pool).await.unwrap();
+        let first_id = entries[0].id;
+
+        do_delete_outbox_entries(&pool, vec![first_id]).await.unwrap();
+
+        let remaining = do_drain_outbox(&pool).await.unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].entity_id, "c2");
+    }
 }

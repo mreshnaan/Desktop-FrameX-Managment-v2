@@ -5,7 +5,9 @@ import type { Role } from '../shared/index';
 export interface AccessTokenPayload { sub: string; role: Role }
 
 export function signAccessToken(payload: AccessTokenPayload): string {
-  return jwt.sign(payload, env.JWT_ACCESS_SECRET, { expiresIn: '15m' });
+  return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
+    expiresIn: env.JWT_ACCESS_TTL as jwt.SignOptions['expiresIn'],
+  });
 }
 
 export function signRefreshToken(payload: { sub: string }): string {

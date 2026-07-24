@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import {
-  CATEGORIES,
-  SessionSchema,
-  formatCurrency,
-  type Category,
-  type Session,
-  type Customer,
-} from '@/lib/shared';
+import { SessionSchema, formatCurrency, type Session, type Customer, type Billing } from '@/lib/shared';
 import { useSessions } from '@/lib/hooks/useSessions';
 import { useCustomers } from '@/lib/hooks/useCustomers';
+import { useCategories, type CategoryWithStations, type CategoryStation } from '@/lib/hooks/useCategories';
 import DateStepper from '@/components/layout/DateStepper';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,12 +30,13 @@ interface Summary {
 }
 
 type UpdateSessionFn = (id: string, patch: Partial<Session>) => Promise<void>;
-type AddSessionFn = (category: string, resource: string) => Promise<void>;
+type AddSessionFn = (stationId: string, categoryId: string, billingType: Billing) => Promise<void>;
 type DeleteSessionFn = (id: string) => Promise<void>;
 
 export default function DailySalesView({ date, onDateChange }: DailySalesViewProps) {
   const { sessions, isLoading, addSession, updateSession, deleteSession } = useSessions(date);
   const { customers } = useCustomers();
+  const { categories } = useCategories();
 
   const summary = useMemo<Summary>(() => {
     const totals: Summary = { total: 0, Cash: 0, Card: 0, Credit: 0 };
@@ -62,11 +57,11 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
         <p className="text-sm text-muted-foreground">Loading sessions…</p>
       ) : (
         <div className="flex flex-col gap-6">
-          {CATEGORIES.map(category => (
+          {categories.map(category => (
             <CategoryGroup
-              key={category.name}
+              key={category.id}
               category={category}
-              sessions={sessions.filter(s => s.category === category.name)}
+              sessions={sessions.filter(s => category.stations.some(st => st.id === s.stationId))}
               customers={customers}
               addSession={addSession}
               updateSession={updateSession}
@@ -114,7 +109,7 @@ function CategoryGroup({
   updateSession,
   deleteSession,
 }: {
-  category: Category;
+  category: CategoryWithStations;
   sessions: Session[];
   customers: Customer[];
   addSession: AddSessionFn;
@@ -125,12 +120,12 @@ function CategoryGroup({
     <section className="flex flex-col gap-3">
       <h2 className="text-lg font-semibold">{category.name}</h2>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {category.resources.map(resource => (
-          <ResourceCard
-            key={resource}
+        {category.stations.map(station => (
+          <StationCard
+            key={station.id}
             category={category}
-            resource={resource}
-            sessions={sessions.filter(s => s.resource === resource)}
+            station={station}
+            sessions={sessions.filter(s => s.stationId === station.id)}
             customers={customers}
             addSession={addSession}
             updateSession={updateSession}
@@ -142,17 +137,17 @@ function CategoryGroup({
   );
 }
 
-function ResourceCard({
+function StationCard({
   category,
-  resource,
+  station,
   sessions,
   customers,
   addSession,
   updateSession,
   deleteSession,
 }: {
-  category: Category;
-  resource: string;
+  category: CategoryWithStations;
+  station: CategoryStation;
   sessions: Session[];
   customers: Customer[];
   addSession: AddSessionFn;
@@ -162,9 +157,9 @@ function ResourceCard({
   const subtotal = useMemo(() => sessions.reduce((sum, s) => sum + s.amount, 0), [sessions]);
 
   return (
-    <Card data-testid={`resource-card-${category.name}-${resource}`}>
+    <Card data-testid={`resource-card-${category.name}-${station.name}`}>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>{resource}</CardTitle>
+        <CardTitle>{station.name}</CardTitle>
         <span className="text-sm font-medium text-muted-foreground">{formatCurrency(subtotal)}</span>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -176,13 +171,17 @@ function ResourceCard({
             key={session.id}
             session={session}
             frameNumber={index + 1}
-            billing={category.billing}
+            billing={category.billingType}
             customers={customers}
             updateSession={updateSession}
             deleteSession={deleteSession}
           />
         ))}
-        <Button variant="outline" size="sm" onClick={() => addSession(category.name, resource)}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => addSession(station.id, category.id, category.billingType)}
+        >
           + Add session
         </Button>
       </CardContent>
@@ -200,7 +199,7 @@ function SessionRow({
 }: {
   session: Session;
   frameNumber: number;
-  billing: Category['billing'];
+  billing: Billing;
   customers: Customer[];
   updateSession: UpdateSessionFn;
   deleteSession: DeleteSessionFn;

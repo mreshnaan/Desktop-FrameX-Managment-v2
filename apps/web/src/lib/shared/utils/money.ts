@@ -1,5 +1,6 @@
-import type { TimeRate } from '../constants/categories.js';
 import { durationMinutes } from './dates.js';
+
+export type TimeRate = { hour: number; half: number };
 
 export function calcTimeAmount(start: string, end: string, rate: TimeRate): number {
   const mins = durationMinutes(start, end);

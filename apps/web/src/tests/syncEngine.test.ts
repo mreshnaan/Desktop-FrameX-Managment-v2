@@ -37,7 +37,7 @@ describe('syncEngine', () => {
       }
       // /sync/pull
       return new Response(
-        JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], serverTime: '2026-07-24T00:00:00.000Z' }),
+        JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], categories: [], stations: [], serverTime: '2026-07-24T00:00:00.000Z' }),
         { status: 200 },
       );
     });
@@ -81,7 +81,7 @@ describe('syncEngine', () => {
         );
       }
       return new Response(
-        JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], serverTime: '2026-07-24T00:00:00.000Z' }),
+        JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], categories: [], stations: [], serverTime: '2026-07-24T00:00:00.000Z' }),
         { status: 200 },
       );
     });
@@ -106,7 +106,7 @@ describe('syncEngine', () => {
       if (String(url).includes('/sync/push')) {
         return new Response(JSON.stringify({ error: 'server down' }), { status: 500 });
       }
-      return new Response(JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], serverTime: '2026-07-24T00:00:00.000Z' }), { status: 200 });
+      return new Response(JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], categories: [], stations: [], serverTime: '2026-07-24T00:00:00.000Z' }), { status: 200 });
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -144,6 +144,8 @@ describe('syncEngine', () => {
           ],
           creditEntries: [],
           rates: [],
+          categories: [],
+          stations: [],
           serverTime: '2026-07-24T00:00:00.000Z',
         }),
         { status: 200 },
@@ -175,7 +177,7 @@ describe('syncEngine', () => {
         return new Response(JSON.stringify({}), { status: 200 });
       }
       return new Response(
-        JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], serverTime: '2026-07-24T00:00:00.000Z' }),
+        JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], categories: [], stations: [], serverTime: '2026-07-24T00:00:00.000Z' }),
         { status: 200 },
       );
     });
@@ -227,7 +229,7 @@ describe('syncEngine', () => {
       }
       // /sync/pull
       return new Response(
-        JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], serverTime: '2026-07-24T00:00:00.000Z' }),
+        JSON.stringify({ sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], categories: [], stations: [], serverTime: '2026-07-24T00:00:00.000Z' }),
         { status: 200 },
       );
     });

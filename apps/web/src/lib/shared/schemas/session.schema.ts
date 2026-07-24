@@ -1,12 +1,8 @@
 import { z } from 'zod';
-import { CATEGORIES } from '../constants/categories.js';
-
-const categoryNames = CATEGORIES.map((c: { name: string }) => c.name) as [string, ...string[]];
 
 const sessionBaseSchema = z.object({
   id: z.string().uuid(),
-  category: z.enum(categoryNames),
-  resource: z.string().min(1),
+  stationId: z.string().min(1),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   start: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal('')),
   end: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal('')),

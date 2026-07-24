@@ -1,13 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import {
-  CATEGORIES,
-  TimeRateSchema,
-  FrameRateSchema,
-  type TimeRateInput,
-  type FrameRateInput,
-} from '@/lib/shared';
-import { useRates } from '@/lib/hooks/useRates';
+import { TimeRateSchema, FrameRateSchema, type TimeRateInput, type FrameRateInput } from '@/lib/shared';
+import { useRates, type RateWithCategory } from '@/lib/hooks/useRates';
 import type { RateRow } from '@/lib/db/dexie';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,32 +14,31 @@ export default function RateManagementView() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      {rates.map(row => {
-        const category = CATEGORIES.find(c => c.name === row.category);
-        if (!category) return null;
-        return category.billing === 'time' ? (
-          <TimeRateCard key={row.category} row={row} setRate={setRate} />
+      {rates.map(row =>
+        row.billingType === 'time' ? (
+          <TimeRateCard key={row.categoryId} row={row} setRate={setRate} />
         ) : (
-          <FrameRateCard key={row.category} row={row} setRate={setRate} />
-        );
-      })}
+          <FrameRateCard key={row.categoryId} row={row} setRate={setRate} />
+        )
+      )}
     </div>
   );
 }
 
-function TimeRateCard({ row, setRate }: { row: RateRow; setRate: SetRateFn }) {
+function TimeRateCard({ row, setRate }: { row: RateWithCategory; setRate: SetRateFn }) {
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<TimeRateInput>({
     resolver: zodResolver(TimeRateSchema),
-    defaultValues: { category: row.category, hour: row.hour ?? 0, half: row.half ?? 0 },
+    defaultValues: { categoryId: row.categoryId, hour: row.hour ?? 0, half: row.half ?? 0 },
   });
 
   async function onSubmit(data: TimeRateInput) {
     await setRate({
-      category: row.category,
+      id: row.id,
+      categoryId: row.categoryId,
       hour: data.hour,
       half: data.half,
       value: null,
@@ -56,15 +49,15 @@ function TimeRateCard({ row, setRate }: { row: RateRow; setRate: SetRateFn }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{row.category}</CardTitle>
+        <CardTitle>{row.categoryName}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <FieldGroup className="@md/field-group:flex-row @md/field-group:items-end">
             <Field className="@md/field-group:max-w-40">
-              <FieldLabel htmlFor={`hour-${row.category}`}>Rate per 60 min</FieldLabel>
+              <FieldLabel htmlFor={`hour-${row.categoryId}`}>Rate per 60 min</FieldLabel>
               <Input
-                id={`hour-${row.category}`}
+                id={`hour-${row.categoryId}`}
                 type="number"
                 min={0}
                 step={1}
@@ -75,9 +68,9 @@ function TimeRateCard({ row, setRate }: { row: RateRow; setRate: SetRateFn }) {
               <FieldError errors={errors.hour ? [errors.hour] : undefined} />
             </Field>
             <Field className="@md/field-group:max-w-40">
-              <FieldLabel htmlFor={`half-${row.category}`}>Rate per 30 min</FieldLabel>
+              <FieldLabel htmlFor={`half-${row.categoryId}`}>Rate per 30 min</FieldLabel>
               <Input
-                id={`half-${row.category}`}
+                id={`half-${row.categoryId}`}
                 type="number"
                 min={0}
                 step={1}
@@ -94,19 +87,20 @@ function TimeRateCard({ row, setRate }: { row: RateRow; setRate: SetRateFn }) {
   );
 }
 
-function FrameRateCard({ row, setRate }: { row: RateRow; setRate: SetRateFn }) {
+function FrameRateCard({ row, setRate }: { row: RateWithCategory; setRate: SetRateFn }) {
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<FrameRateInput>({
     resolver: zodResolver(FrameRateSchema),
-    defaultValues: { category: row.category, value: row.value ?? 0 },
+    defaultValues: { categoryId: row.categoryId, value: row.value ?? 0 },
   });
 
   async function onSubmit(data: FrameRateInput) {
     await setRate({
-      category: row.category,
+      id: row.id,
+      categoryId: row.categoryId,
       hour: null,
       half: null,
       value: data.value,
@@ -117,14 +111,14 @@ function FrameRateCard({ row, setRate }: { row: RateRow; setRate: SetRateFn }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{row.category}</CardTitle>
+        <CardTitle>{row.categoryName}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="max-w-40">
           <Field>
-            <FieldLabel htmlFor={`value-${row.category}`}>Rate per frame</FieldLabel>
+            <FieldLabel htmlFor={`value-${row.categoryId}`}>Rate per frame</FieldLabel>
             <Input
-              id={`value-${row.category}`}
+              id={`value-${row.categoryId}`}
               type="number"
               min={0}
               step={1}

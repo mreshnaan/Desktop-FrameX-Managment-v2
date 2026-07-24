@@ -3,7 +3,8 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { hasAccess, todayStr } from '@/lib/shared';
 import { AuthProvider } from '@/lib/auth/AuthContext';
 import { useAuth } from '@/lib/auth/useAuth';
-import { startSyncEngine } from '@/lib/sync/syncEngine';
+import { startSyncEngine, runBootstrapPull } from '@/lib/sync/syncEngine';
+import { db } from '@/lib/db/dexie';
 import LoginForm from '@/components/auth/LoginForm';
 import { AppShell } from './components/layout/AppShell';
 import type { BusinessViewKey } from './components/layout/Sidebar';
@@ -79,6 +80,13 @@ function AuthenticatedApp() {
 
 function Gate() {
   const { state, refreshAccessToken } = useAuth();
+  // Categories/stations no longer ship hardcoded (see apps/api's relational
+  // schema migration) -- a fresh install has nothing to show until it's
+  // pulled them from the server at least once. This blocks the app shell
+  // (not just sessions/rates, which read from the same empty tables) until
+  // that first pull completes, so the UI never renders with zero categories.
+  const [bootstrapped, setBootstrapped] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!state.accessToken) return;
@@ -90,7 +98,38 @@ function Gate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.accessToken]);
 
-  return state.user ? <AuthenticatedApp /> : <LoginForm />;
+  useEffect(() => {
+    if (!state.accessToken || bootstrapped) return;
+    let cancelled = false;
+    (async () => {
+      const existing = await db.categories.count();
+      if (existing > 0) {
+        if (!cancelled) setBootstrapped(true);
+        return;
+      }
+      try {
+        await runBootstrapPull(state.accessToken!);
+        if (!cancelled) setBootstrapped(true);
+      } catch (e) {
+        if (!cancelled) setBootstrapError(e instanceof Error ? e.message : 'Failed to load categories');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.accessToken, bootstrapped]);
+
+  if (!state.user) return <LoginForm />;
+
+  if (!bootstrapped) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-4 text-sm text-muted-foreground">
+        {bootstrapError ? `Failed to load: ${bootstrapError}` : 'Loading…'}
+      </div>
+    );
+  }
+
+  return <AuthenticatedApp />;
 }
 
 export default function App() {

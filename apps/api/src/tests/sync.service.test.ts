@@ -9,6 +9,8 @@ vi.mock('../db', () => {
     customer: { upsert: vi.fn() },
     creditEntry: { upsert: vi.fn() },
     rate: { upsert: vi.fn() },
+    category: { upsert: vi.fn() },
+    station: { upsert: vi.fn() },
   };
   // Real Prisma interactive transactions run the callback against a tx client;
   // for these unit tests the tx client is just the same mocked prisma object,
@@ -63,5 +65,35 @@ describe('applyPush', () => {
     });
 
     expect(prisma.customer.upsert).toHaveBeenCalledTimes(3);
+  });
+
+  it('upserts a rate keyed by id, not categoryId', async () => {
+    await applyPush([
+      { table: 'rates', op: 'upsert', id: 'rate-1', payload: { categoryId: 'cat-1', hour: 200, half: 100, value: null }, clientUpdatedAt: new Date().toISOString() },
+    ]);
+    expect(prisma.rate.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'rate-1' },
+      create: expect.objectContaining({ id: 'rate-1', categoryId: 'cat-1' }),
+    }));
+  });
+
+  it('upserts a category row', async () => {
+    await applyPush([
+      { table: 'categories', op: 'upsert', id: 'cat-1', payload: { name: '8-Ball', billingType: 'time' }, clientUpdatedAt: new Date().toISOString() },
+    ]);
+    expect(prisma.category.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'cat-1' },
+      create: expect.objectContaining({ id: 'cat-1', name: '8-Ball' }),
+    }));
+  });
+
+  it('upserts a station row', async () => {
+    await applyPush([
+      { table: 'stations', op: 'upsert', id: 'st-1', payload: { categoryId: 'cat-1', name: 'Table 1' }, clientUpdatedAt: new Date().toISOString() },
+    ]);
+    expect(prisma.station.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'st-1' },
+      create: expect.objectContaining({ id: 'st-1', categoryId: 'cat-1' }),
+    }));
   });
 });

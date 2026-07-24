@@ -56,12 +56,33 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date): Promise<
       break;
     }
     case 'rates': {
-      // Rate has no deletedAt column and is keyed by `category`, not `id`.
+      // Rate has no deletedAt column and is keyed by `id`, not `categoryId`.
       const base = { ...entry.payload, updatedAt: now };
       await tx.rate.upsert({
-        where: { category: entry.id },
-        create: { category: entry.id, ...base } as unknown as Prisma.RateUncheckedCreateInput,
+        where: { id: entry.id },
+        create: { id: entry.id, ...base } as unknown as Prisma.RateUncheckedCreateInput,
         update: base as unknown as Prisma.RateUncheckedUpdateInput,
+      });
+      break;
+    }
+    case 'categories': {
+      // No client ever pushes a categories/stations entry today (they're
+      // seeded server-side and have no CRUD UI), but the server still handles
+      // upserts uniformly with every other table rather than special-casing
+      // "unreachable" — leaves room for an admin UI later without another
+      // sync-service change.
+      await tx.category.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...entry.payload } as unknown as Prisma.CategoryUncheckedCreateInput,
+        update: entry.payload as unknown as Prisma.CategoryUncheckedUpdateInput,
+      });
+      break;
+    }
+    case 'stations': {
+      await tx.station.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...entry.payload } as unknown as Prisma.StationUncheckedCreateInput,
+        update: entry.payload as unknown as Prisma.StationUncheckedUpdateInput,
       });
       break;
     }
@@ -115,12 +136,26 @@ export async function applyPush(entries: OutboxEntry[]): Promise<ApplyPushResult
 
 export async function pullSince(since?: string) {
   const where = since ? { updatedAt: { gt: new Date(since) } } : {};
-  const [sessions, expenses, customers, creditEntries, rates] = await Promise.all([
+  // categories/stations have no updatedAt column (see schema migration note --
+  // they're stable, server-seeded reference data with no client-side edits),
+  // so every pull returns the full set rather than filtering by `since`.
+  const [sessions, expenses, customers, creditEntries, rates, categories, stations] = await Promise.all([
     prisma.session.findMany({ where }),
     prisma.expense.findMany({ where }),
     prisma.customer.findMany({ where }),
     prisma.creditEntry.findMany({ where }),
     prisma.rate.findMany({ where }),
+    prisma.category.findMany(),
+    prisma.station.findMany(),
   ]);
-  return { sessions, expenses, customers, creditEntries, rates, serverTime: new Date().toISOString() };
+  return {
+    sessions,
+    expenses,
+    customers,
+    creditEntries,
+    rates,
+    categories,
+    stations,
+    serverTime: new Date().toISOString(),
+  };
 }

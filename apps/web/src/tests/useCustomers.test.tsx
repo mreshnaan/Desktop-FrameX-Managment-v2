@@ -17,12 +17,12 @@ async function seedCustomerWithMixedSessions() {
   await db.customers.put(customer);
 
   const activeSession: Session = {
-    id: 'sess-1', category: '8-Ball', resource: 'Table 1', date: '2026-07-23',
+    id: 'sess-1', stationId: 'station-1', date: '2026-07-23',
     start: '09:00', end: '10:00', amount: 200, method: 'Credit', customerId: 'cust-1',
     updatedAt: new Date().toISOString(), deletedAt: null,
   };
   const deletedSession: Session = {
-    id: 'sess-2', category: '8-Ball', resource: 'Table 2', date: '2026-07-23',
+    id: 'sess-2', stationId: 'station-2', date: '2026-07-23',
     start: '09:00', end: '10:00', amount: 500, method: 'Credit', customerId: 'cust-1',
     updatedAt: new Date().toISOString(), deletedAt: new Date().toISOString(),
   };

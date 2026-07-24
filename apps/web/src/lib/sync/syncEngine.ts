@@ -1,11 +1,17 @@
 import type { Table } from 'dexie';
 import type { QueryClient } from '@tanstack/react-query';
-import { db, type RateRow } from '../db/dexie';
+import { db, type RateRow, type CategoryRow, type StationRow } from '../db/dexie';
 import { apiFetch, ApiError } from '../api/client';
 import type { Session, Expense, Customer, CreditEntry } from '@/lib/shared';
 
 const CURSOR_KEY = 'cue-room-sync-cursor';
-const TABLES = ['sessions', 'expenses', 'customers', 'creditEntries', 'rates'] as const;
+const TABLES = ['sessions', 'expenses', 'customers', 'creditEntries', 'rates', 'categories', 'stations'] as const;
+
+// categories/stations have no updatedAt column (server-seeded reference data,
+// no client ever edits them -- see apps/api's schema migration) so
+// last-write-wins doesn't apply to them; every pull just overwrites the
+// local copy unconditionally.
+const ALWAYS_OVERWRITE_TABLES = new Set<(typeof TABLES)[number]>(['categories', 'stations']);
 
 interface TableRowMap {
   sessions: Session;
@@ -13,6 +19,8 @@ interface TableRowMap {
   customers: Customer;
   creditEntries: CreditEntry;
   rates: RateRow;
+  categories: CategoryRow;
+  stations: StationRow;
 }
 
 interface PullResult {
@@ -21,6 +29,8 @@ interface PullResult {
   customers: Customer[];
   creditEntries: CreditEntry[];
   rates: RateRow[];
+  categories: CategoryRow[];
+  stations: StationRow[];
   serverTime: string;
 }
 
@@ -61,10 +71,17 @@ async function push(accessToken: string) {
 
 async function mergeIncoming<K extends keyof TableRowMap>(table: K, rows: TableRowMap[K][]) {
   const dexieTable = db[table] as Table<TableRowMap[K], string>;
+  const alwaysOverwrite = ALWAYS_OVERWRITE_TABLES.has(table);
   for (const row of rows) {
-    const key = table === 'rates' ? (row as RateRow).category : (row as { id: string }).id;
+    const key = (row as { id: string }).id;
+    if (alwaysOverwrite) {
+      await dexieTable.put(row);
+      continue;
+    }
     const existing = await dexieTable.get(key);
-    if (!existing || new Date(row.updatedAt ?? 0) > new Date(existing.updatedAt ?? 0)) {
+    const incomingUpdatedAt = (row as { updatedAt?: string }).updatedAt ?? 0;
+    const existingUpdatedAt = (existing as { updatedAt?: string } | undefined)?.updatedAt ?? 0;
+    if (!existing || new Date(incomingUpdatedAt) > new Date(existingUpdatedAt)) {
       await dexieTable.put(row);
     }
   }
@@ -77,6 +94,15 @@ async function pull(accessToken: string) {
   });
   for (const table of TABLES) await mergeIncoming(table, result[table]);
   localStorage.setItem(CURSOR_KEY, result.serverTime);
+}
+
+// Runs one pull cycle (no push -- a fresh install has nothing local to push
+// yet) and lets its error propagate, so the caller (App.tsx's first-run
+// gate) can block rendering the main app shell until categories/stations/
+// rates are actually populated, instead of silently swallowing failures the
+// way the background cycle() below does.
+export async function runBootstrapPull(accessToken: string): Promise<void> {
+  await pull(accessToken);
 }
 
 export function startSyncEngine(

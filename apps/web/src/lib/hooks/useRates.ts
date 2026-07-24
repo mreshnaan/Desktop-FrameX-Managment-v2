@@ -1,22 +1,30 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { db, enqueueOutbox, type RateRow } from '../db/dexie';
-import { CATEGORIES, DEFAULT_RATES } from '@/lib/shared';
+import type { Billing } from '@/lib/shared';
+
+export interface RateWithCategory extends RateRow {
+  categoryName: string;
+  billingType: Billing;
+}
 
 export function useRates() {
   const qc = useQueryClient();
   const query = useQuery({
     queryKey: ['rates'],
-    queryFn: async () => {
-      const rows = await db.rates.toArray();
-      const byCategory = new Map(rows.map(r => [r.category, r]));
-      return CATEGORIES.map(c => {
-        const existing = byCategory.get(c.name);
-        if (existing) return existing;
-        const def = DEFAULT_RATES[c.name];
-        const defIsFrame = typeof def === 'number';
-        return c.billing === 'frame'
-          ? { category: c.name, hour: null, half: null, value: defIsFrame ? def : 0, updatedAt: new Date().toISOString() }
-          : { category: c.name, hour: defIsFrame ? 0 : def.hour, half: defIsFrame ? 0 : def.half, value: null, updatedAt: new Date().toISOString() };
+    queryFn: async (): Promise<RateWithCategory[]> => {
+      const [categories, rateRows] = await Promise.all([db.categories.toArray(), db.rates.toArray()]);
+      const byCategoryId = new Map(rateRows.map(r => [r.categoryId, r]));
+      return categories.map(c => {
+        const existing = byCategoryId.get(c.id);
+        const base: RateRow = existing ?? {
+          id: crypto.randomUUID(),
+          categoryId: c.id,
+          hour: c.billingType === 'time' ? 0 : null,
+          half: c.billingType === 'time' ? 0 : null,
+          value: c.billingType === 'frame' ? 0 : null,
+          updatedAt: new Date().toISOString(),
+        };
+        return { ...base, categoryName: c.name, billingType: c.billingType };
       });
     },
   });
@@ -24,7 +32,7 @@ export function useRates() {
   async function setRate(row: RateRow) {
     const next = { ...row, updatedAt: new Date().toISOString() };
     await db.rates.put(next);
-    await enqueueOutbox('rates', 'upsert', row.category, next as unknown as Record<string, unknown>);
+    await enqueueOutbox('rates', 'upsert', next.id, next as unknown as Record<string, unknown>);
     await qc.invalidateQueries({ queryKey: ['rates'] });
   }
 

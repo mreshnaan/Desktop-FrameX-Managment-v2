@@ -7,7 +7,6 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import {
-  CATEGORIES,
   WEEKDAYS,
   MONTHS,
   dateStrOf,
@@ -16,6 +15,7 @@ import {
   type Session,
 } from '@/lib/shared';
 import { db } from '@/lib/db/dexie';
+import { useCategories } from '@/lib/hooks/useCategories';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -75,6 +75,7 @@ const columns = [
 ];
 
 export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps) {
+  const { categories } = useCategories();
   const [cursor, setCursor] = useState<MonthCursor>(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -113,10 +114,17 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
 
   const categoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
-    for (const category of CATEGORIES) totals[category.name] = 0;
-    for (const s of sessions) totals[s.category] = (totals[s.category] ?? 0) + s.amount;
+    const categoryNameByStationId = new Map<string, string>();
+    for (const category of categories) {
+      totals[category.name] = 0;
+      for (const station of category.stations) categoryNameByStationId.set(station.id, category.name);
+    }
+    for (const s of sessions) {
+      const categoryName = categoryNameByStationId.get(s.stationId);
+      if (categoryName) totals[categoryName] = (totals[categoryName] ?? 0) + s.amount;
+    }
     return totals;
-  }, [sessions]);
+  }, [sessions, categories]);
 
   const table = useReactTable({
     data: rows,
@@ -156,8 +164,8 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {CATEGORIES.map(category => (
-          <Card key={category.name}>
+        {categories.map(category => (
+          <Card key={category.id}>
             <CardHeader>
               <CardTitle>{category.name}</CardTitle>
             </CardHeader>

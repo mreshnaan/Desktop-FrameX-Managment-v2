@@ -34,10 +34,28 @@ model User {
   updatedAt    DateTime @updatedAt
 }
 
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  billingType String
+  stations    Station[]
+  rate        Rate?
+}
+
+model Station {
+  id         String    @id @default(uuid())
+  categoryId String
+  category   Category  @relation(fields: [categoryId], references: [id])
+  name       String
+  sessions   Session[]
+
+  @@index([categoryId])
+}
+
 model Session {
   id         String    @id @default(uuid())
-  category   String
-  resource   String
+  stationId  String
+  station    Station   @relation(fields: [stationId], references: [id])
   date       String
   start      String
   end        String
@@ -49,6 +67,7 @@ model Session {
 
   @@index([date])
   @@index([customerId])
+  @@index([stationId])
 }
 
 model Expense {
@@ -83,9 +102,11 @@ model CreditEntry {
 }
 
 model Rate {
-  category  String   @id
-  hour      Int?
-  half      Int?
-  value     Int?
-  updatedAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  categoryId String   @unique
+  category   Category @relation(fields: [categoryId], references: [id])
+  hour       Int?
+  half       Int?
+  value      Int?
+  updatedAt  DateTime @default(now())
 }

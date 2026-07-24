@@ -1,11 +1,19 @@
 import { z } from 'zod';
 
-export const SyncTableName = z.enum(['sessions', 'expenses', 'customers', 'creditEntries', 'rates']);
+export const SyncTableName = z.enum([
+  'sessions',
+  'expenses',
+  'customers',
+  'creditEntries',
+  'rates',
+  'categories',
+  'stations',
+]);
 
 export const OutboxEntrySchema = z.object({
   table: SyncTableName,
   op: z.enum(['upsert', 'delete']),
-  id: z.string().min(1), // not always a uuid — Rate rows are keyed by category name (e.g. "8-Ball")
+  id: z.string().min(1),
   payload: z.record(z.unknown()),
   clientUpdatedAt: z.string().datetime(),
 });

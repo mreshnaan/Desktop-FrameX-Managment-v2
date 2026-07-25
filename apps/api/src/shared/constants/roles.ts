@@ -12,6 +12,7 @@ export type PermissionKey =
   | 'customers'
   | 'creditManagement'
   | 'expenses'
+  | 'monthlyExpenses'
   | 'rateManagement'
   | 'userManagement'
   | 'roleManagement'
@@ -27,6 +28,7 @@ export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
   { key: 'customers', label: 'Customers' },
   { key: 'creditManagement', label: 'Credit Management' },
   { key: 'expenses', label: 'Expenses' },
+  { key: 'monthlyExpenses', label: 'Monthly Expenses' },
   { key: 'rateManagement', label: 'Rate Management' },
   { key: 'cafe', label: 'Cafe' },
   { key: 'userManagement', label: 'User Management' },
@@ -44,7 +46,7 @@ export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
 // admin-only for the same reason userManagement is -- it's oversight, not
 // a day-to-day cashier task.
 const BUSINESS_PERMISSIONS: PermissionKey[] = [
-  'dailySales', 'monthlySales', 'customers', 'creditManagement', 'expenses', 'rateManagement', 'cafe',
+  'dailySales', 'monthlySales', 'customers', 'creditManagement', 'expenses', 'monthlyExpenses', 'rateManagement', 'cafe',
 ];
 const ADMIN_ONLY_PERMISSIONS: PermissionKey[] = [
   'userManagement', 'roleManagement', 'categoryManagement', 'productManagement', 'backupRestore', 'auditLog',

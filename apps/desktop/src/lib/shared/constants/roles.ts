@@ -10,6 +10,7 @@ export type PermissionKey =
   | 'customers'
   | 'creditManagement'
   | 'expenses'
+  | 'monthlyExpenses'
   | 'rateManagement'
   | 'userManagement'
   | 'roleManagement'
@@ -25,6 +26,7 @@ export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
   { key: 'customers', label: 'Customers' },
   { key: 'creditManagement', label: 'Credit Management' },
   { key: 'expenses', label: 'Expenses' },
+  { key: 'monthlyExpenses', label: 'Monthly Expenses' },
   { key: 'rateManagement', label: 'Rate Management' },
   { key: 'cafe', label: 'Cafe' },
   { key: 'userManagement', label: 'User Management' },

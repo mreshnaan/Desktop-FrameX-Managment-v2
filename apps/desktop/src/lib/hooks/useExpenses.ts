@@ -10,9 +10,15 @@ export function useExpenses(date: string) {
     queryFn: () => commands.listExpensesForDate(date),
   });
 
-  async function addExpense() {
-    await commands.createExpense(date);
-    await qc.invalidateQueries({ queryKey: key });
+  // Defaults to the day currently being viewed, but a cashier recording a
+  // receipt from an earlier day doesn't have to navigate away first --
+  // create_expense already took a date param, it was just never exposed.
+  async function addExpense(customDate?: string) {
+    await commands.createExpense(customDate ?? date);
+    // Broader than `key` alone: a backdated expense lands on a different
+    // day's cache than the one currently being viewed, so invalidate every
+    // cached expenses-day query instead of just this one.
+    await qc.invalidateQueries({ queryKey: ['expenses'] });
   }
 
   async function updateExpense(id: string, patch: Partial<ExpenseRow>) {
@@ -26,4 +32,15 @@ export function useExpenses(date: string) {
   }
 
   return { expenses: query.data ?? [], addExpense, updateExpense, deleteExpense };
+}
+
+// Bounded by date range at the Rust/SQL layer (list_expenses_between), the
+// same pattern useSessions/listSessionsBetween and useOrdersBetween already
+// use, for Monthly Expenses' day-by-day table.
+export function useExpensesBetween(startDate: string, endDate: string) {
+  const query = useQuery({
+    queryKey: ['expenses', startDate, endDate],
+    queryFn: () => commands.listExpensesBetween(startDate, endDate),
+  });
+  return { expenses: query.data ?? [], isLoading: query.isLoading };
 }

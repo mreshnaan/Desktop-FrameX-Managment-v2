@@ -22,6 +22,31 @@ pub async fn list_expenses_for_date(pool: State<'_, SqlitePool>, date: String) -
     do_list_expenses_for_date(pool.inner(), date).await
 }
 
+pub(crate) async fn do_list_expenses_between(
+    pool: &SqlitePool,
+    start_date: String,
+    end_date: String,
+) -> Result<Vec<Expense>, String> {
+    sqlx::query_as::<_, Expense>(
+        "SELECT id, date, description, amount, method, updated_at, deleted_at
+         FROM expenses WHERE date >= ? AND date <= ? AND deleted_at IS NULL",
+    )
+    .bind(start_date)
+    .bind(end_date)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_expenses_between(
+    pool: State<'_, SqlitePool>,
+    start_date: String,
+    end_date: String,
+) -> Result<Vec<Expense>, String> {
+    do_list_expenses_between(pool.inner(), start_date, end_date).await
+}
+
 fn payload(e: &Expense, created_by: &Option<String>, updated_by: &Option<String>) -> serde_json::Value {
     json!({
         "id": e.id, "date": e.date, "description": e.description, "amount": e.amount,
@@ -188,5 +213,18 @@ mod tests {
         do_delete_expense(&pool, expense.id).await.unwrap();
 
         assert!(do_list_expenses_for_date(&pool, "2026-07-25".to_string()).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_expenses_between_only_returns_expenses_in_the_date_range() {
+        let pool = setup_test_db().await;
+        do_create_expense(&pool, "2026-06-15".to_string()).await.unwrap();
+        do_create_expense(&pool, "2026-07-01".to_string()).await.unwrap();
+
+        let results = do_list_expenses_between(&pool, "2026-06-01".to_string(), "2026-06-30".to_string())
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].date, "2026-06-15");
     }
 }

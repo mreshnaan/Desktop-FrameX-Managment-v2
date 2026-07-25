@@ -48,6 +48,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'customers', label: 'Customers', icon: Users },
   { key: 'creditManagement', label: 'Credit Management', icon: CreditCard },
   { key: 'expenses', label: 'Expenses', icon: Receipt },
+  { key: 'monthlyExpenses', label: 'Monthly Expenses', icon: BarChart3 },
   { key: 'rateManagement', label: 'Rate Management', icon: Settings },
   { key: 'cafe', label: 'Cafe', icon: Coffee },
   { key: 'userManagement', label: 'User Management', icon: ShieldCheck },

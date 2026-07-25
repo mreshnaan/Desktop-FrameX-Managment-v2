@@ -13,6 +13,7 @@ import MonthlySalesView from './components/views/MonthlySalesView';
 import CustomersView from './components/views/CustomersView';
 import CreditManagementView from './components/views/CreditManagementView';
 import ExpensesView from './components/views/ExpensesView';
+import MonthlyExpensesView from './components/views/MonthlyExpensesView';
 import RateManagementView from './components/views/RateManagementView';
 import UserManagementView from './components/views/UserManagementView';
 import RoleManagementView from './components/views/RoleManagementView';
@@ -79,6 +80,14 @@ function AuthenticatedApp() {
       {view === 'customers' && <CustomersView />}
       {view === 'creditManagement' && <CreditManagementView />}
       {view === 'expenses' && <ExpensesView date={date} onDateChange={setDate} />}
+      {view === 'monthlyExpenses' && (
+        <MonthlyExpensesView
+          onJumpToDate={(d) => {
+            setDate(d);
+            setView('expenses');
+          }}
+        />
+      )}
       {view === 'rateManagement' && <RateManagementView />}
       {view === 'cafe' && (
         <PermissionGate permissions={permissions} requires="cafe">

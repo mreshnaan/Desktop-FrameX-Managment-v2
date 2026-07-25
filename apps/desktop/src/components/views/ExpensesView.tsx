@@ -27,8 +27,14 @@ type DeleteExpenseFn = (id: string) => Promise<void>;
 
 export default function ExpensesView({ date, onDateChange }: ExpensesViewProps) {
   const { expenses, addExpense, updateExpense, deleteExpense } = useExpenses(date);
+  const [backdateTo, setBackdateTo] = useState('');
 
   const total = useMemo(() => expenses.reduce((sum, e) => sum + e.amount, 0), [expenses]);
+
+  async function handleAddExpense() {
+    await addExpense(backdateTo || undefined);
+    setBackdateTo('');
+  }
 
   return (
     <div className="flex flex-col gap-6 p-4">
@@ -57,9 +63,19 @@ export default function ExpensesView({ date, onDateChange }: ExpensesViewProps) 
               deleteExpense={deleteExpense}
             />
           ))}
-          <Button variant="outline" size="sm" className="self-start" onClick={() => addExpense()}>
-            + Add expense
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleAddExpense}>
+              + Add expense
+            </Button>
+            <Input
+              type="date"
+              value={backdateTo}
+              onChange={e => setBackdateTo(e.target.value)}
+              className="w-40"
+              aria-label="Backdate to"
+              title="Leave blank to use the day shown above"
+            />
+          </div>
         </CardContent>
       </Card>
     </div>

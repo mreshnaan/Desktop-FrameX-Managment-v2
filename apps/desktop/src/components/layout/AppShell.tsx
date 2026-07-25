@@ -3,6 +3,7 @@ import { LogOut } from 'lucide-react';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth/useAuth';
+import { branding } from '@/config/branding';
 import { AppSidebar, type BusinessViewKey } from './Sidebar';
 
 interface AppShellProps {
@@ -38,7 +39,7 @@ export function AppShell({
       <SidebarInset>
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
           <SidebarTrigger />
-          <span className="text-sm font-medium text-muted-foreground">Cue Room</span>
+          <span className="text-sm font-medium text-muted-foreground">{branding.appName}</span>
           <Button
             variant="ghost"
             size="sm"

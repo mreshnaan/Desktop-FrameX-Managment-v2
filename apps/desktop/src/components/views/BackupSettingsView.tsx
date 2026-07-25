@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands, type BackupInfo } from '@/lib/tauri/commands';
+import { branding } from '@/config/branding';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
@@ -57,7 +58,7 @@ export default function BackupSettingsView() {
           <CardContent>
             <p className="text-sm text-muted-foreground">
               Restored from <span className="font-medium text-foreground">{restoredFilename}</span>. Close and
-              reopen Cue Room for the restored data to take effect.
+              reopen {branding.appName} for the restored data to take effect.
             </p>
           </CardContent>
         </Card>

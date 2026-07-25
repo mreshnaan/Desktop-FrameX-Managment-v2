@@ -1,17 +1,29 @@
 /// <reference types="vitest/config" />
 import path from 'node:path'
-import { defineConfig, type UserConfig } from 'vite'
+import { defineConfig, type Plugin, type UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { branding } from './src/config/branding.ts'
 
 const host = process.env.TAURI_DEV_HOST
+
+// Keeps index.html's <title> driven by the same branding.ts the rest of the
+// app reads, instead of a second hardcoded copy of the app name in HTML.
+function injectAppTitle(): Plugin {
+  return {
+    name: 'inject-app-title',
+    transformIndexHtml(html) {
+      return html.replace(/<title>.*<\/title>/, `<title>${branding.appName}</title>`)
+    },
+  }
+}
 
 // https://vite.dev/config/
 // Tauri-specific settings (fixed port, strictPort, ignoring src-tauri in the
 // watcher) follow Tauri 2's documented Vite setup so `tauri dev` can rely on
 // a stable dev server URL.
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), injectAppTitle()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

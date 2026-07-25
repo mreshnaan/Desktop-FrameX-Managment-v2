@@ -38,10 +38,10 @@ describe('calcCustomerBalance', () => {
 });
 
 describe('formatCurrency', () => {
-  it('prefixes the rupee symbol and groups thousands', () => {
-    expect(formatCurrency(12345)).toBe('₹12,345');
+  it('prefixes the currency symbol and groups thousands', () => {
+    expect(formatCurrency(12345)).toBe('Rs. 12,345');
   });
   it('treats non-numeric input as 0', () => {
-    expect(formatCurrency(NaN)).toBe('₹0');
+    expect(formatCurrency(NaN)).toBe('Rs. 0');
   });
 });

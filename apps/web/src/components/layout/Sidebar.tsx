@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import { Calendar, BarChart3, Users, CreditCard, Receipt, Settings, ShieldCheck, History, Coffee } from 'lucide-react';
 import { hasPermission, type PermissionKey as ViewKey } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
+import { branding } from '@/config/branding';
 import {
   Sidebar as SidebarPrimitive,
   SidebarContent,
@@ -53,7 +54,7 @@ export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
     <SidebarPrimitive collapsible="icon">
       <SidebarHeader>
         <div className="truncate px-2 py-1 text-lg font-semibold group-data-[collapsible=icon]:hidden">
-          Cue Room
+          {branding.appName}
         </div>
       </SidebarHeader>
       <SidebarContent>

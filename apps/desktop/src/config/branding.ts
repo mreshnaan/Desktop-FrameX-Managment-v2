@@ -25,13 +25,15 @@ export type LogoConfig = { type: 'placeholder' } | { type: 'image'; src: string 
 export interface Branding {
   appName: string;
   appShortName: string;
+  currencySymbol: string;
   logo: LogoConfig;
   theme: { light: ThemeTokens; dark: ThemeTokens };
 }
 
 export const branding: Branding = {
-  appName: 'Cue Room',
-  appShortName: 'Cue Room',
+  appName: 'FrameX Management',
+  appShortName: 'FrameX',
+  currencySymbol: 'Rs. ',
   logo: { type: 'placeholder' },
   theme: {
     light: {

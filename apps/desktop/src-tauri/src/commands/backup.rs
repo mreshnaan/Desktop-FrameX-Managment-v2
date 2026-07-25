@@ -57,7 +57,7 @@ fn do_prune_old_backups(dir: &Path) -> std::io::Result<()> {
 pub(crate) async fn do_backup_now(pool: &SqlitePool, dir: &Path) -> Result<BackupInfo, String> {
     ensure_dir(dir)?;
     let timestamp = Utc::now().format("%Y%m%d-%H%M%S%.f").to_string();
-    let filename = format!("cue-room-backup-{timestamp}.sqlite");
+    let filename = format!("{}-backup-{timestamp}.sqlite", crate::branding::APP_SHORT_NAME);
     let path = dir.join(&filename);
 
     sqlx::query(&format!("VACUUM INTO '{}'", quote_sqlite_path(&path)))

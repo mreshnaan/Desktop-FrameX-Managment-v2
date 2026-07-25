@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db';
-import type { OutboxEntry } from '../shared/index';
+import { CURRENCY_SYMBOL, type OutboxEntry } from '../shared/index';
 
 export interface PushFailure {
   id: string;
@@ -33,21 +33,21 @@ function summarize(table: OutboxEntry['table'], payload: Record<string, unknown>
     case 'stations':
       return `station "${str(payload.name)}"`;
     case 'sessions':
-      return `session on ${str(payload.date)} — ₹${num(payload.amount)}`;
+      return `session on ${str(payload.date)} — ${CURRENCY_SYMBOL}${num(payload.amount)}`;
     case 'expenses':
-      return `expense "${str(payload.description)}" — ₹${num(payload.amount)}`;
+      return `expense "${str(payload.description)}" — ${CURRENCY_SYMBOL}${num(payload.amount)}`;
     case 'customers':
       return `customer "${str(payload.name)}"`;
     case 'creditEntries':
-      return `${str(payload.type) === 'CREDIT_GIVEN' ? 'credit given' : 'payment received'} — ₹${num(payload.amount)}`;
+      return `${str(payload.type) === 'CREDIT_GIVEN' ? 'credit given' : 'payment received'} — ${CURRENCY_SYMBOL}${num(payload.amount)}`;
     case 'rates':
-      return `rate (₹${num(payload.hour ?? payload.value)})`;
+      return `rate (${CURRENCY_SYMBOL}${num(payload.hour ?? payload.value)})`;
     case 'productCategories':
       return `product category "${str(payload.name)}"`;
     case 'products':
-      return `product "${str(payload.name)}" — ₹${num(payload.price)}`;
+      return `product "${str(payload.name)}" — ${CURRENCY_SYMBOL}${num(payload.price)}`;
     case 'orders':
-      return `order — ₹${num(payload.total)} (${str(payload.method)})`;
+      return `order — ${CURRENCY_SYMBOL}${num(payload.total)} (${str(payload.method)})`;
     case 'orderItems':
       return `order item — qty ${num(payload.qty)}`;
     case 'stockMovements':

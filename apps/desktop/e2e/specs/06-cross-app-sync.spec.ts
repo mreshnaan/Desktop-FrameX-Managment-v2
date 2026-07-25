@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Browser } from '@playwright/test';
 import { connectToApp, connectToWeb, login, loginWeb, navigateTo } from '../helpers';
+import { branding } from '../../src/config/branding';
 
 // The only spec that proves apps/desktop and apps/web actually interoperate
 // through the real api + Postgres -- every other spec in either suite only
@@ -131,7 +132,7 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     await expect(webProductRow.getByRole('cell', { name: '9', exact: true })).toBeVisible();
 
     await webPage.getByRole('button', { name: 'Orders', exact: true }).click();
-    await expect(webPage.getByRole('cell', { name: '₹60', exact: true })).toBeVisible();
+    await expect(webPage.getByRole('cell', { name: `${branding.currencySymbol}60`, exact: true })).toBeVisible();
   });
 
   test('a credit session, an expense, and a rate change made on desktop are visible read-only on web', async () => {
@@ -173,14 +174,14 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     await navigateTo(webPage, 'Daily Sales');
     const webStationCard = webPage.getByTestId('resource-card-8-Ball-Table 1');
     const webSessionRow = webStationCard.getByTestId('session-row').last();
-    await expect(webSessionRow).toContainText('₹300');
+    await expect(webSessionRow).toContainText(`${branding.currencySymbol}300`);
     await expect(webSessionRow).toContainText('Credit');
     await expect(webSessionRow).toContainText('E2E Analytics Customer');
     // Read-only: no editable amount/method fields on web anymore.
     await expect(webSessionRow.getByLabel('Amount')).toHaveCount(0);
 
     await navigateTo(webPage, 'Credit Management');
-    await expect(webPage.getByTestId('balance-E2E Analytics Customer')).toContainText('₹300');
+    await expect(webPage.getByTestId('balance-E2E Analytics Customer')).toContainText(`${branding.currencySymbol}300`);
 
     await navigateTo(webPage, 'Expenses');
     await expect(webPage.getByText('E2E Analytics Snack')).toBeVisible();
@@ -189,7 +190,7 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
 
     await navigateTo(webPage, 'Rate Management');
     const webPlayStationCard = webPage.locator('[data-slot="card"]').filter({ hasText: 'PlayStation' });
-    await expect(webPlayStationCard).toContainText('₹175');
+    await expect(webPlayStationCard).toContainText(`${branding.currencySymbol}175`);
     // Read-only: no rate input fields on web anymore.
     await expect(webPlayStationCard.getByRole('spinbutton')).toHaveCount(0);
 

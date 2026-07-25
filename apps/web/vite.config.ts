@@ -1,8 +1,20 @@
 /// <reference types="vitest/config" />
 import path from 'node:path'
-import { defineConfig, type UserConfig } from 'vite'
+import { defineConfig, type Plugin, type UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { branding } from './src/config/branding.ts'
+
+// Keeps index.html's <title> driven by the same branding.ts the rest of the
+// app reads, instead of a second hardcoded copy of the app name in HTML.
+function injectAppTitle(): Plugin {
+  return {
+    name: 'inject-app-title',
+    transformIndexHtml(html) {
+      return html.replace(/<title>.*<\/title>/, `<title>${branding.appName}</title>`)
+    },
+  }
+}
 
 // https://vite.dev/config/
 // NOTE: The `/// <reference types="vitest/config" />` directive above enables
@@ -12,7 +24,7 @@ import tailwindcss from '@tailwindcss/vite'
 // workspace uses vite@8). The `as UserConfig` cast is a deliberate trade-off
 // to make the build pass; revisit if vitest/vite versions are ever aligned.
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), injectAppTitle()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

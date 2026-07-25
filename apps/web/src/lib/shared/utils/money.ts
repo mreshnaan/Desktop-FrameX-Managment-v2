@@ -1,4 +1,5 @@
 import { durationMinutes } from './dates.js';
+import { branding } from '@/config/branding';
 
 export type TimeRate = { hour: number; half: number };
 
@@ -39,5 +40,5 @@ export function calcCustomerBalance(
 
 export function formatCurrency(n: number): string {
   const v = Number.isFinite(n) ? n : 0;
-  return '₹' + v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return branding.currencySymbol + v.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }

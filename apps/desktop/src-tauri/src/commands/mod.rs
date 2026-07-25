@@ -9,5 +9,6 @@ pub mod product_categories;
 pub mod products;
 pub mod rates;
 pub mod sessions;
+pub mod reports;
 pub mod stations;
 pub mod sync;

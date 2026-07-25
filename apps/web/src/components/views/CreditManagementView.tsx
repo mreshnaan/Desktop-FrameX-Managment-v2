@@ -1,21 +1,15 @@
-import { useMemo, useState } from 'react';
-import { formatCurrency, type Customer, type CreditEntry, type Session } from '@/lib/shared';
-import { useCustomers } from '@/lib/hooks/useCustomers';
+import { useState } from 'react';
+import { formatCurrency, type Customer } from '@/lib/shared';
+import { useCustomers, useCustomerCreditHistory, type CustomerHistoryRow } from '@/lib/hooks/useCustomers';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-interface HistoryRow {
-  id: string;
-  date: string;
-  label: string;
-  amount: number;
-  direction: 'charge' | 'payment';
-}
-
 // Read-only: giving credit / recording payments happens on the desktop app --
 // web only displays the resulting balance and history per customer.
+// Balance is pre-aggregated by /reports/customer-balances (server-side).
+// History is lazy-fetched per customer from /reports/customer-credit-history/:id.
 export default function CreditManagementView() {
-  const { customers, history, sessions, balanceFor } = useCustomers();
+  const { customers, balanceFor } = useCustomers();
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -27,8 +21,6 @@ export default function CreditManagementView() {
             key={customer.id}
             customer={customer}
             balance={balanceFor(customer.id)}
-            history={history}
-            sessions={sessions}
           />
         ))
       )}
@@ -39,39 +31,16 @@ export default function CreditManagementView() {
 function CustomerCreditCard({
   customer,
   balance,
-  history,
-  sessions,
 }: {
   customer: Customer;
   balance: number;
-  history: CreditEntry[];
-  sessions: Session[];
 }) {
   const [showHistory, setShowHistory] = useState(false);
 
-  const rows = useMemo<HistoryRow[]>(() => {
-    const charges: HistoryRow[] = sessions
-      .filter(s => !s.deletedAt && s.method === 'Credit' && s.customerId === customer.id)
-      .map(s => ({
-        id: `session-${s.id}`,
-        date: s.date,
-        label: 'Table charge',
-        amount: s.amount,
-        direction: 'charge' as const,
-      }));
-
-    const manual: HistoryRow[] = history
-      .filter(h => h.customerId === customer.id)
-      .map(h => ({
-        id: `credit-${h.id}`,
-        date: h.date,
-        label: h.type === 'CREDIT_GIVEN' ? 'Credit given' : 'Payment received',
-        amount: h.amount,
-        direction: h.type === 'CREDIT_GIVEN' ? ('charge' as const) : ('payment' as const),
-      }));
-
-    return [...charges, ...manual].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  }, [sessions, history, customer.id]);
+  // Lazy: only fetched when the user expands the panel.
+  // Scoped to this customer_id — no full-table scan on the client.
+  const historyQuery = useCustomerCreditHistory(customer.id, showHistory);
+  const rows: CustomerHistoryRow[] = historyQuery.data ?? [];
 
   return (
     <Card>
@@ -99,7 +68,9 @@ function CustomerCreditCard({
           {showHistory ? 'Hide history' : 'Show history'}
         </Button>
         {showHistory &&
-          (rows.length === 0 ? (
+          (historyQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">No history yet.</p>
           ) : (
             <ul className="flex flex-col gap-1">
@@ -110,7 +81,9 @@ function CustomerCreditCard({
                   </span>
                   <span
                     className={
-                      row.direction === 'charge' ? 'font-medium text-destructive' : 'font-medium text-foreground'
+                      row.direction === 'charge'
+                        ? 'font-medium text-destructive'
+                        : 'font-medium text-foreground'
                     }
                   >
                     {row.direction === 'charge' ? '+' : '−'}

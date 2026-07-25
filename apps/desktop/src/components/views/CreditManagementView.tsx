@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -8,8 +9,8 @@ import {
   type Customer,
   type CreditDraft,
   type CreditEntry,
-  type Session,
 } from '@/lib/shared';
+import { commands, type CustomerHistoryRow } from '@/lib/tauri/commands';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,16 +24,8 @@ type AdjustCustomerFn = (
   amount: number
 ) => Promise<void>;
 
-interface HistoryRow {
-  id: string;
-  date: string;
-  label: string;
-  amount: number;
-  direction: 'charge' | 'payment';
-}
-
 export default function CreditManagementView() {
-  const { customers, history, sessions, adjustCustomer, balanceFor } = useCustomers();
+  const { customers, adjustCustomer, balanceFor } = useCustomers();
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -52,8 +45,6 @@ export default function CreditManagementView() {
             key={customer.id}
             customer={customer}
             balance={balanceFor(customer.id)}
-            history={history}
-            sessions={sessions}
             adjustCustomer={adjustCustomer}
           />
         ))
@@ -65,14 +56,10 @@ export default function CreditManagementView() {
 function CustomerCreditCard({
   customer,
   balance,
-  history,
-  sessions,
   adjustCustomer,
 }: {
   customer: Customer;
   balance: number;
-  history: CreditEntry[];
-  sessions: Session[];
   adjustCustomer: AdjustCustomerFn;
 }) {
   const [showHistory, setShowHistory] = useState(false);
@@ -83,9 +70,17 @@ function CustomerCreditCard({
     formState: { errors, isSubmitting },
   } = useForm<CreditDraft>({ resolver: zodResolver(CreditDraftSchema) });
 
-  // Two distinct submit actions share one amount field. Each button gets its
-  // own handleSubmit-wrapped handler (rather than one handler branching on
-  // shared state), so there is no risk of the "wrong" action firing.
+  // Only fetched on-demand (when the user opens the history panel),
+  // and scoped to this customer_id — the SQL UNION in the backend
+  // returns the merged timeline pre-sorted; no JS filtering needed.
+  const historyQuery = useQuery({
+    queryKey: ['customer-credit-history', customer.id],
+    queryFn: () => commands.getCustomerCreditHistory(customer.id),
+    enabled: showHistory,
+  });
+
+  const rows: CustomerHistoryRow[] = historyQuery.data ?? [];
+
   const onGiveCredit = handleSubmit(async data => {
     await adjustCustomer(customer.id, todayStr(), 'CREDIT_GIVEN', data.amount);
     reset();
@@ -95,30 +90,6 @@ function CustomerCreditCard({
     await adjustCustomer(customer.id, todayStr(), 'PAYMENT_RECEIVED', data.amount);
     reset();
   });
-
-  const rows = useMemo<HistoryRow[]>(() => {
-    const charges: HistoryRow[] = sessions
-      .filter(s => !s.deletedAt && s.method === 'Credit' && s.customerId === customer.id)
-      .map(s => ({
-        id: `session-${s.id}`,
-        date: s.date,
-        label: 'Table charge',
-        amount: s.amount,
-        direction: 'charge' as const,
-      }));
-
-    const manual: HistoryRow[] = history
-      .filter(h => h.customerId === customer.id)
-      .map(h => ({
-        id: `credit-${h.id}`,
-        date: h.date,
-        label: h.type === 'CREDIT_GIVEN' ? 'Credit given' : 'Payment received',
-        amount: h.amount,
-        direction: h.type === 'CREDIT_GIVEN' ? ('charge' as const) : ('payment' as const),
-      }));
-
-    return [...charges, ...manual].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  }, [sessions, history, customer.id]);
 
   return (
     <Card>
@@ -171,7 +142,9 @@ function CustomerCreditCard({
             {showHistory ? 'Hide history' : 'Show history'}
           </Button>
           {showHistory &&
-            (rows.length === 0 ? (
+            (historyQuery.isLoading ? (
+              <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+            ) : rows.length === 0 ? (
               <p className="mt-2 text-sm text-muted-foreground">No history yet.</p>
             ) : (
               <ul className="mt-2 flex flex-col gap-1">

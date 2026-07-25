@@ -266,4 +266,48 @@ export const commands = {
     invoke<OrderRow[]>('list_orders_between', { startUtc, endUtc }),
   listOrderItemsBetween: (startUtc: string, endUtc: string) =>
     invoke<OrderItemRow[]>('list_order_items_between', { startUtc, endUtc }),
+
+  // Reports
+  getMonthlyReport: (startDate: string, endDate: string, startUtc: string, endUtc: string) =>
+    invoke<MonthlyReportResult>('get_monthly_report', { startDate, endDate, startUtc, endUtc }),
+  // backend returns a plain JSON object { customerId: balance }
+  // — the frontend just reads data[customerId], zero computation.
+  getCustomerBalances: () =>
+    invoke<Record<string, number>>('get_customer_balances'),
+  getCustomerCreditHistory: (customerId: string) =>
+    invoke<CustomerHistoryRow[]>('get_customer_credit_history', { customerId }),
 };
+
+export interface DailyCategoryTotal {
+  date: string;
+  categoryId: string;
+  method: 'Cash' | 'Card' | 'Credit';
+  total: number;
+}
+
+export interface DailyExpenseTotal {
+  date: string;
+  method: 'Cash' | 'Card';
+  total: number;
+}
+
+export interface DailyCafeTotal {
+  date: string;
+  method: 'Cash' | 'Card' | 'Credit';
+  total: number;
+  profit: number;
+}
+
+export interface MonthlyReportResult {
+  sessionTotals: DailyCategoryTotal[];
+  expenseTotals: DailyExpenseTotal[];
+  cafeTotals: DailyCafeTotal[];
+}
+
+export interface CustomerHistoryRow {
+  id: string;
+  date: string;
+  label: string;
+  amount: number;
+  direction: 'charge' | 'payment';
+}

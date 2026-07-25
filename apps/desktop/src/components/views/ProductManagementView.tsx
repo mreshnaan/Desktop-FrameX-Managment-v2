@@ -92,6 +92,7 @@ function NewProductCard({
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
+  const [cost, setCost] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,12 +102,21 @@ function NewProductCard({
       setError('Category, name, and a valid price are required');
       return;
     }
+    const costNum = cost.trim() === '' ? null : Number(cost);
+    if (costNum !== null && (!Number.isFinite(costNum) || costNum < 0)) {
+      setError('Cost must be a valid non-negative number, or left blank');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      await onCreated({ categoryId, name: name.trim(), price: Math.round(priceNum), cost: null, lowStockThreshold: 0, barcode: null });
+      await onCreated({
+        categoryId, name: name.trim(), price: Math.round(priceNum),
+        cost: costNum === null ? null : Math.round(costNum), lowStockThreshold: 0, barcode: null,
+      });
       setName('');
       setPrice('');
+      setCost('');
     } finally {
       setSubmitting(false);
     }
@@ -142,6 +152,17 @@ function NewProductCard({
             <FieldLabel htmlFor="new-product-price">Price</FieldLabel>
             <Input id="new-product-price" type="number" min={0} value={price} onChange={e => setPrice(e.target.value)} />
           </Field>
+          <Field className="@md/field-group:max-w-32">
+            <FieldLabel htmlFor="new-product-cost">Cost</FieldLabel>
+            <Input
+              id="new-product-cost"
+              type="number"
+              min={0}
+              placeholder="optional"
+              value={cost}
+              onChange={e => setCost(e.target.value)}
+            />
+          </Field>
           <Button type="button" disabled={submitting} onClick={submit}>
             Add product
           </Button>
@@ -163,13 +184,17 @@ function ProductRowEditor({
 }) {
   const [name, setName] = useState(product.name);
   const [price, setPrice] = useState(String(product.price));
+  const [cost, setCost] = useState(product.cost === null ? '' : String(product.cost));
   const [stockDelta, setStockDelta] = useState('');
 
   async function save() {
     const priceNum = Number(price);
     if (!name.trim() || !Number.isFinite(priceNum) || priceNum < 0) return;
+    const costNum = cost.trim() === '' ? null : Number(cost);
+    if (costNum !== null && (!Number.isFinite(costNum) || costNum < 0)) return;
     await onSave({
-      id: product.id, name: name.trim(), price: Math.round(priceNum), cost: product.cost,
+      id: product.id, name: name.trim(), price: Math.round(priceNum),
+      cost: costNum === null ? null : Math.round(costNum),
       lowStockThreshold: product.lowStockThreshold, barcode: product.barcode, active: product.active,
     });
   }
@@ -198,9 +223,25 @@ function ProductRowEditor({
         <FieldLabel htmlFor={`product-price-${product.id}`}>Price</FieldLabel>
         <Input id={`product-price-${product.id}`} type="number" min={0} value={price} onChange={e => setPrice(e.target.value)} />
       </Field>
+      <Field className="max-w-28">
+        <FieldLabel htmlFor={`product-cost-${product.id}`}>Cost</FieldLabel>
+        <Input
+          id={`product-cost-${product.id}`}
+          type="number"
+          min={0}
+          placeholder="optional"
+          value={cost}
+          onChange={e => setCost(e.target.value)}
+        />
+      </Field>
       <Button type="button" variant="outline" size="sm" onClick={save}>
         Save
       </Button>
+      {product.cost !== null && (
+        <span className="text-sm text-muted-foreground">
+          Margin: {formatCurrency(product.price - product.cost)}
+        </span>
+      )}
       <span className="text-sm text-muted-foreground">Stock: {product.stockQty}</span>
       <Field className="max-w-24">
         <FieldLabel htmlFor={`product-stock-${product.id}`}>Adjust by</FieldLabel>

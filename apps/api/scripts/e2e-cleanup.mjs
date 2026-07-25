@@ -21,6 +21,7 @@ async function main() {
   // it was assigned to still exists. RolePermission rows cascade with it.
   await prisma.user.deleteMany({ where: { username: { startsWith: 'e2e-' } } });
   await prisma.role.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
+  await prisma.expense.deleteMany({ where: { description: { startsWith: 'E2E ' } } });
   // customerId on Session/CreditEntry is a plain string column, not a Prisma
   // relation (see schema.prisma) -- filter by id list rather than a nested
   // `customer: {...}` where, which only works through a declared relation.

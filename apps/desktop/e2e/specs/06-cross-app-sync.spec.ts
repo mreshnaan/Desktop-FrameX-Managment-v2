@@ -4,7 +4,7 @@ import { branding } from '../../src/config/branding';
 
 // The only spec that proves apps/desktop and apps/web actually interoperate
 // through the real api + Postgres -- every other spec in either suite only
-// exercises one app talking to itself. Runs before 07-backup-restore (which
+// exercises one app talking to itself. Runs before 08-backup-restore (which
 // leaves the desktop app unusable) and after the admin specs that need a
 // clean, freshly-seeded desktop app.
 //
@@ -147,6 +147,10 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     await stationCard.getByRole('button', { name: '+ Add session' }).click();
     const sessionRow = stationCard.getByTestId('session-row').last();
     await sessionRow.getByLabel('Amount').fill('300');
+    // Amount commits on blur -- confirm it landed before moving on, instead
+    // of relying on the next click to *also* happen to trigger that blur.
+    await sessionRow.getByLabel('Amount').blur();
+    await expect(sessionRow.getByLabel('Amount')).toHaveValue('300');
     await sessionRow.getByLabel('Customer').click();
     await desktopPage.getByRole('option', { name: 'E2E Analytics Customer' }).click();
     await expect(sessionRow.getByLabel('Customer')).toContainText('E2E Analytics Customer');

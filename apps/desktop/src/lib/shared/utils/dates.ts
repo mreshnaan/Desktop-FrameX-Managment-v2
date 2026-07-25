@@ -24,3 +24,18 @@ export function durationMinutes(start: string, end: string): number {
   if (mins < 0) mins += 24 * 60;
   return mins;
 }
+
+export function nowTimeStr(): string {
+  const d = new Date();
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Wraps past midnight, matching durationMinutes' convention -- a quick
+// duration/extend action a few minutes before midnight should still produce
+// a valid time-of-day rather than one past 24:00.
+export function addMinutesToTime(time: string, minutes: number): string {
+  const [h, m] = time.split(':').map(Number);
+  const dayMinutes = 24 * 60;
+  const total = ((h * 60 + m + minutes) % dayMinutes + dayMinutes) % dayMinutes;
+  return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}

@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { SessionSchema, formatCurrency, type Session, type Customer, type Billing } from '@/lib/shared';
+import {
+  SessionSchema,
+  formatCurrency,
+  todayStr,
+  nowTimeStr,
+  addMinutesToTime,
+  durationMinutes,
+  type Session,
+  type Customer,
+  type Billing,
+} from '@/lib/shared';
 import { useSessions } from '@/lib/hooks/useSessions';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useCategories, type CategoryWithStations, type CategoryStation } from '@/lib/hooks/useCategories';
@@ -61,6 +71,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
           {categories.map(category => (
             <CategoryGroup
               key={category.id}
+              date={date}
               category={category}
               sessions={sessions.filter(s => category.stations.some(st => st.id === s.stationId))}
               customers={customers}
@@ -103,6 +114,7 @@ function SummaryStrip({ summary }: { summary: Summary }) {
 }
 
 function CategoryGroup({
+  date,
   category,
   sessions,
   customers,
@@ -110,6 +122,7 @@ function CategoryGroup({
   updateSession,
   deleteSession,
 }: {
+  date: string;
   category: CategoryWithStations;
   sessions: Session[];
   customers: Customer[];
@@ -124,6 +137,7 @@ function CategoryGroup({
         {category.stations.map(station => (
           <StationCard
             key={station.id}
+            date={date}
             category={category}
             station={station}
             sessions={sessions.filter(s => s.stationId === station.id)}
@@ -139,6 +153,7 @@ function CategoryGroup({
 }
 
 function StationCard({
+  date,
   category,
   station,
   sessions,
@@ -147,6 +162,7 @@ function StationCard({
   updateSession,
   deleteSession,
 }: {
+  date: string;
   category: CategoryWithStations;
   station: CategoryStation;
   sessions: Session[];
@@ -170,6 +186,7 @@ function StationCard({
         {sessions.map((session, index) => (
           <SessionRow
             key={session.id}
+            date={date}
             session={session}
             frameNumber={index + 1}
             billing={category.billingType}
@@ -190,7 +207,18 @@ function StationCard({
   );
 }
 
+const QUICK_DURATIONS = [30, 60, 90, 120];
+
+function formatDuration(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h${m}m`;
+}
+
 function SessionRow({
+  date,
   session,
   frameNumber,
   billing,
@@ -198,6 +226,7 @@ function SessionRow({
   updateSession,
   deleteSession,
 }: {
+  date: string;
   session: Session;
   frameNumber: number;
   billing: Billing;
@@ -222,6 +251,33 @@ function SessionRow({
     }
     setError(null);
     await updateSession(session.id, patch);
+  }
+
+  // Quick actions are for actively running a shift, not editing another
+  // day's already-closed records -- restrict them to today. Within today,
+  // "Extend" only makes sense while the session's end hasn't happened yet in
+  // real time; once it has, retyping the field directly is the correct fix,
+  // not a canned +30m.
+  const isToday = date === todayStr();
+  const now = nowTimeStr();
+  const canSetDuration = billing === 'time' && isToday && !!session.start;
+  // Comparing end/now as plain "HH:MM" strings breaks the moment a session's
+  // end wraps past midnight ("00:45" sorts before "23:15" even though it's
+  // chronologically later) -- durationMinutes already wraps correctly, so
+  // measuring both end and now as elapsed-since-start sidesteps the string
+  // comparison entirely.
+  const hasEnded =
+    !session.start || !session.end || durationMinutes(session.start, now) >= durationMinutes(session.start, session.end);
+  const canExtend = billing === 'time' && isToday && !!session.end && !hasEnded;
+
+  function applyDuration(minutes: number) {
+    if (!session.start) return;
+    commit({ end: addMinutesToTime(session.start, minutes) });
+  }
+
+  function extend(minutes: number) {
+    if (!session.end) return;
+    commit({ end: addMinutesToTime(session.end, minutes) });
   }
 
   return (
@@ -323,6 +379,35 @@ function SessionRow({
           <Trash2 className="text-destructive" />
         </Button>
       </div>
+      {billing === 'time' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">QUICK:</span>
+          {QUICK_DURATIONS.map(minutes => (
+            <Button
+              key={minutes}
+              type="button"
+              variant="link"
+              size="xs"
+              disabled={!canSetDuration}
+              onClick={() => applyDuration(minutes)}
+              className="h-auto p-0"
+            >
+              +{formatDuration(minutes)}
+            </Button>
+          ))}
+          <span className="text-border" aria-hidden="true">|</span>
+          <Button
+            type="button"
+            variant="link"
+            size="xs"
+            disabled={!canExtend}
+            onClick={() => extend(30)}
+            className="h-auto p-0"
+          >
+            Extend +30m
+          </Button>
+        </div>
+      )}
       <FieldError errors={error ? [{ message: error }] : undefined} />
     </div>
   );

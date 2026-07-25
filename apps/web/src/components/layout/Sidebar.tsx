@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { Calendar, BarChart3, Users, CreditCard, Receipt, Settings, ShieldCheck, History } from 'lucide-react';
+import { Calendar, BarChart3, Users, CreditCard, Receipt, Settings, ShieldCheck, History, Coffee } from 'lucide-react';
 import { hasPermission, type PermissionKey as ViewKey } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
 import {
@@ -34,6 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'creditManagement', label: 'Credit Management', icon: CreditCard },
   { key: 'expenses', label: 'Expenses', icon: Receipt },
   { key: 'rateManagement', label: 'Rate Management', icon: Settings },
+  { key: 'cafe', label: 'Cafe', icon: Coffee },
   { key: 'userManagement', label: 'User Management', icon: ShieldCheck },
   { key: 'auditLog', label: 'Activity & Sync Logs', icon: History },
 ];

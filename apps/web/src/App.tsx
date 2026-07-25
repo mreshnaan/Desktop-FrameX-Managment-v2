@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { hasPermission, todayStr } from '@/lib/shared';
 import { AuthProvider } from '@/lib/auth/AuthContext';
 import { useAuth } from '@/lib/auth/useAuth';
-import { startSyncEngine, runBootstrapPull } from '@/lib/sync/syncEngine';
-import { db } from '@/lib/db/dexie';
 import LoginForm from '@/components/auth/LoginForm';
 import { AppShell } from './components/layout/AppShell';
 import type { BusinessViewKey } from './components/layout/Sidebar';
@@ -16,22 +14,12 @@ import ExpensesView from './components/views/ExpensesView';
 import RateManagementView from './components/views/RateManagementView';
 import UserManagementView from './components/views/UserManagementView';
 import AuditLogView from './components/views/AuditLogView';
+import CafeView from './components/views/CafeView';
 
-// networkMode defaults to 'online' in TanStack Query, which pauses queries
-// and mutations whenever the browser is offline -- even ones whose queryFn
-// never touches the network (every view here reads/writes local Dexie
-// tables). That silently broke the offline-first claim: local writes landed
-// in IndexedDB immediately (enqueueOutbox works offline), but the UI never
-// re-rendered to show them because the invalidated query stayed "paused"
-// until connectivity returned. 'always' makes queries/mutations run
-// unconditionally, which is correct for state whose real backing store is
-// local-first Dexie, not the network.
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { networkMode: 'always' },
-    mutations: { networkMode: 'always' },
-  },
-});
+// Every view here is a thin read-only fetch of /sync/pull (see usePullData) --
+// no local storage, no offline-first concerns, so TanStack Query's default
+// 'online' networkMode (pause queries while offline) is exactly right.
+const queryClient = new QueryClient();
 
 function AuthenticatedApp() {
   const { state } = useAuth();
@@ -67,6 +55,14 @@ function AuthenticatedApp() {
       {view === 'creditManagement' && <CreditManagementView />}
       {view === 'expenses' && <ExpensesView date={date} onDateChange={setDate} />}
       {view === 'rateManagement' && <RateManagementView />}
+      {view === 'cafe' &&
+        (permissions && hasPermission(permissions, 'cafe') ? (
+          <CafeView />
+        ) : (
+          <div className="p-4 text-sm text-muted-foreground">
+            Not authorized to view this page.
+          </div>
+        ))}
       {view === 'userManagement' &&
         (permissions && hasPermission(permissions, 'userManagement') ? (
           <UserManagementView />
@@ -88,55 +84,9 @@ function AuthenticatedApp() {
 }
 
 function Gate() {
-  const { state, refreshAccessToken } = useAuth();
-  // Categories/stations no longer ship hardcoded (see apps/api's relational
-  // schema migration) -- a fresh install has nothing to show until it's
-  // pulled them from the server at least once. This blocks the app shell
-  // (not just sessions/rates, which read from the same empty tables) until
-  // that first pull completes, so the UI never renders with zero categories.
-  const [bootstrapped, setBootstrapped] = useState(false);
-  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!state.accessToken) return;
-    return startSyncEngine(state.accessToken, queryClient, refreshAccessToken);
-    // refreshAccessToken is intentionally omitted from deps: it is redefined
-    // every render, and re-keying on it would needlessly tear down/restart the
-    // sync engine. The engine only needs the currently-valid closure, which it
-    // captures at start time; the token itself is the meaningful dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.accessToken]);
-
-  useEffect(() => {
-    if (!state.accessToken || bootstrapped) return;
-    let cancelled = false;
-    (async () => {
-      const existing = await db.categories.count();
-      if (existing > 0) {
-        if (!cancelled) setBootstrapped(true);
-        return;
-      }
-      try {
-        await runBootstrapPull(state.accessToken!);
-        if (!cancelled) setBootstrapped(true);
-      } catch (e) {
-        if (!cancelled) setBootstrapError(e instanceof Error ? e.message : 'Failed to load categories');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [state.accessToken, bootstrapped]);
+  const { state } = useAuth();
 
   if (!state.user) return <LoginForm />;
-
-  if (!bootstrapped) {
-    return (
-      <div className="flex min-h-screen items-center justify-center p-4 text-sm text-muted-foreground">
-        {bootstrapError ? `Failed to load: ${bootstrapError}` : 'Loading…'}
-      </div>
-    );
-  }
 
   return <AuthenticatedApp />;
 }

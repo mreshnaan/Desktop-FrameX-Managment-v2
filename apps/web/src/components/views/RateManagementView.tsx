@@ -1,134 +1,44 @@
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { TimeRateSchema, FrameRateSchema, type TimeRateInput, type FrameRateInput } from '@/lib/shared';
 import { useRates, type RateWithCategory } from '@/lib/hooks/useRates';
-import type { RateRow } from '@/lib/db/dexie';
+import { formatCurrency } from '@/lib/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Field, FieldGroup, FieldLabel, FieldError } from '@/components/ui/field';
 
-type SetRateFn = (row: RateRow) => Promise<void>;
-
+// Read-only: rates are set on the desktop app -- web only displays them.
 export default function RateManagementView() {
-  const { rates, setRate } = useRates();
+  const { rates } = useRates();
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      {rates.map(row =>
-        row.billingType === 'time' ? (
-          <TimeRateCard key={row.categoryId} row={row} setRate={setRate} />
-        ) : (
-          <FrameRateCard key={row.categoryId} row={row} setRate={setRate} />
-        )
-      )}
+      {rates.map(row => (
+        <RateCard key={row.categoryId} row={row} />
+      ))}
     </div>
   );
 }
 
-function TimeRateCard({ row, setRate }: { row: RateWithCategory; setRate: SetRateFn }) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<TimeRateInput>({
-    resolver: zodResolver(TimeRateSchema),
-    defaultValues: { categoryId: row.categoryId, hour: row.hour ?? 0, half: row.half ?? 0 },
-  });
-
-  async function onSubmit(data: TimeRateInput) {
-    await setRate({
-      id: row.id,
-      categoryId: row.categoryId,
-      hour: data.hour,
-      half: data.half,
-      value: null,
-      updatedAt: row.updatedAt,
-    });
-  }
-
+function RateCard({ row }: { row: RateWithCategory }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>{row.categoryName}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} noValidate>
-          <FieldGroup className="@md/field-group:flex-row @md/field-group:items-end">
-            <Field className="@md/field-group:max-w-40">
-              <FieldLabel htmlFor={`hour-${row.categoryId}`}>Rate per 60 min</FieldLabel>
-              <Input
-                id={`hour-${row.categoryId}`}
-                type="number"
-                min={0}
-                step={1}
-                aria-invalid={!!errors.hour}
-                {...register('hour')}
-                onBlur={handleSubmit(onSubmit)}
-              />
-              <FieldError errors={errors.hour ? [errors.hour] : undefined} />
-            </Field>
-            <Field className="@md/field-group:max-w-40">
-              <FieldLabel htmlFor={`half-${row.categoryId}`}>Rate per 30 min</FieldLabel>
-              <Input
-                id={`half-${row.categoryId}`}
-                type="number"
-                min={0}
-                step={1}
-                aria-invalid={!!errors.half}
-                {...register('half')}
-                onBlur={handleSubmit(onSubmit)}
-              />
-              <FieldError errors={errors.half ? [errors.half] : undefined} />
-            </Field>
-          </FieldGroup>
-        </form>
-      </CardContent>
-    </Card>
-  );
-}
-
-function FrameRateCard({ row, setRate }: { row: RateWithCategory; setRate: SetRateFn }) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<FrameRateInput>({
-    resolver: zodResolver(FrameRateSchema),
-    defaultValues: { categoryId: row.categoryId, value: row.value ?? 0 },
-  });
-
-  async function onSubmit(data: FrameRateInput) {
-    await setRate({
-      id: row.id,
-      categoryId: row.categoryId,
-      hour: null,
-      half: null,
-      value: data.value,
-      updatedAt: row.updatedAt,
-    });
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{row.categoryName}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} noValidate className="max-w-40">
-          <Field>
-            <FieldLabel htmlFor={`value-${row.categoryId}`}>Rate per frame</FieldLabel>
-            <Input
-              id={`value-${row.categoryId}`}
-              type="number"
-              min={0}
-              step={1}
-              aria-invalid={!!errors.value}
-              {...register('value')}
-              onBlur={handleSubmit(onSubmit)}
-            />
-            <FieldError errors={errors.value ? [errors.value] : undefined} />
-          </Field>
-        </form>
+      <CardContent className="flex gap-6 text-sm">
+        {row.billingType === 'time' ? (
+          <>
+            <div>
+              <div className="text-xs text-muted-foreground">Rate per 60 min</div>
+              <div className="text-lg font-semibold">{formatCurrency(row.hour ?? 0)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Rate per 30 min</div>
+              <div className="text-lg font-semibold">{formatCurrency(row.half ?? 0)}</div>
+            </div>
+          </>
+        ) : (
+          <div>
+            <div className="text-xs text-muted-foreground">Rate per frame</div>
+            <div className="text-lg font-semibold">{formatCurrency(row.value ?? 0)}</div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

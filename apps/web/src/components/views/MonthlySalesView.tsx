@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import {
   useReactTable,
   getCoreRowModel,
@@ -14,7 +13,7 @@ import {
   formatCurrency,
   type Session,
 } from '@/lib/shared';
-import { db } from '@/lib/db/dexie';
+import { usePullData } from '@/lib/hooks/usePullData';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -85,13 +84,13 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
   const monthEnd = dateStrOf(new Date(cursor.year, cursor.month + 1, 0));
   const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
 
-  const { data: sessions = [], isLoading } = useQuery({
-    queryKey: ['month-sessions', cursor.year, cursor.month],
-    queryFn: async () => {
-      const all = await db.sessions.where('date').between(monthStart, monthEnd, true, true).toArray();
-      return all.filter(s => !s.deletedAt);
-    },
-  });
+  const pull = usePullData();
+  const isLoading = pull.isLoading;
+  const sessions = useMemo(() => {
+    return (pull.data?.sessions ?? []).filter(
+      s => !s.deletedAt && s.date >= monthStart && s.date <= monthEnd,
+    );
+  }, [pull.data, monthStart, monthEnd]);
 
   const rows = useMemo<DayRow[]>(() => {
     const byDate = new Map<string, Session[]>();

@@ -148,4 +148,108 @@ describe('authenticated routes', () => {
       expect.arrayContaining([expect.objectContaining({ direction: 'push', userName: 'E2E Integration' })]),
     );
   });
+
+  // -------------------------------------------------------------------------
+  // GET /reports/customer-balances
+  // -------------------------------------------------------------------------
+  it('GET /reports/customer-balances returns a plain object keyed by customerId', async () => {
+    const res = await fetch(`${baseUrl}/reports/customer-balances`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await json<Record<string, number>>(res);
+
+    // Must be a plain object (not an array)
+    expect(Array.isArray(body)).toBe(false);
+    expect(typeof body).toBe('object');
+
+    // The customer we pushed earlier must appear with balance 0
+    // (no credit entries exist for it yet)
+    expect(body).toHaveProperty(customerId);
+    expect(body[customerId]).toBe(0);
+  });
+
+  it('GET /reports/customer-balances reflects a pushed credit entry', async () => {
+    // Push a CREDIT_GIVEN entry of 350 for our test customer
+    const entryId = crypto.randomUUID();
+    const pushRes = await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [{
+          table: 'creditEntries',
+          op: 'upsert',
+          id: entryId,
+          payload: {
+            id: entryId,
+            customerId,
+            date: '2026-07-01',
+            type: 'CREDIT_GIVEN',
+            amount: 350,
+            updatedAt: new Date().toISOString(),
+          },
+          clientUpdatedAt: new Date().toISOString(),
+        }],
+      }),
+    });
+    expect(pushRes.status).toBe(200);
+    expect((await json<{ failed: unknown[] }>(pushRes)).failed).toEqual([]);
+
+    const balRes = await fetch(`${baseUrl}/reports/customer-balances`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(balRes.status).toBe(200);
+    const balances = await json<Record<string, number>>(balRes);
+    expect(balances[customerId]).toBe(350);
+
+    // Cleanup credit entry
+    await prisma.creditEntry.deleteMany({ where: { id: entryId } });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /reports/customer-credit-history/:customerId
+  // -------------------------------------------------------------------------
+  it('GET /reports/customer-credit-history/:id returns an empty array for a customer with no history', async () => {
+    const res = await fetch(`${baseUrl}/reports/customer-credit-history/${customerId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await json<unknown[]>(res);
+    expect(Array.isArray(body)).toBe(true);
+  });
+
+  it('GET /reports/customer-credit-history/:id returns labelled rows sorted date DESC', async () => {
+    // Push two credit entries with different dates
+    const id1 = crypto.randomUUID();
+    const id2 = crypto.randomUUID();
+    await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [
+          { table: 'creditEntries', op: 'upsert', id: id1, payload: { id: id1, customerId, date: '2026-07-01', type: 'CREDIT_GIVEN', amount: 200, updatedAt: new Date().toISOString() }, clientUpdatedAt: new Date().toISOString() },
+          { table: 'creditEntries', op: 'upsert', id: id2, payload: { id: id2, customerId, date: '2026-07-05', type: 'PAYMENT_RECEIVED', amount: 80, updatedAt: new Date().toISOString() }, clientUpdatedAt: new Date().toISOString() },
+        ],
+      }),
+    });
+
+    const res = await fetch(`${baseUrl}/reports/customer-credit-history/${customerId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.status).toBe(200);
+    const rows = await json<{ id: string; date: string; label: string; amount: number; direction: string }[]>(res);
+
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    // Date DESC: 2026-07-05 payment comes before 2026-07-01 credit
+    const paymentIdx = rows.findIndex(r => r.id === `credit-${id2}`);
+    const creditIdx  = rows.findIndex(r => r.id === `credit-${id1}`);
+    expect(paymentIdx).toBeLessThan(creditIdx);
+    expect(rows[paymentIdx].label).toBe('Payment received');
+    expect(rows[paymentIdx].direction).toBe('payment');
+    expect(rows[creditIdx].label).toBe('Credit given');
+    expect(rows[creditIdx].direction).toBe('charge');
+
+    // Cleanup
+    await prisma.creditEntry.deleteMany({ where: { id: { in: [id1, id2] } } });
+  });
 });

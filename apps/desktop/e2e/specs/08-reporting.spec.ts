@@ -38,10 +38,31 @@ test('cost price, cafe profit roll-up, and backdated Monthly Expenses', async ()
   const dailyProfitBefore = parseLabeledAmount(dailyBeforeText, 'Profit');
 
   await navigateTo(page, 'Monthly Sales');
-  const monthlyCafeCard = page.locator('[data-slot="card"]').filter({ hasText: 'Cafe' });
+  const monthlyCafeCard = page.getByTestId('monthly-cafe-summary-card');
   const monthlyBeforeText = await monthlyCafeCard.innerText();
   const monthlyRevenueBefore = parseFirstAmount(monthlyBeforeText);
   const monthlyProfitBefore = parseLabeledAmount(monthlyBeforeText, 'profit');
+
+  // Verify overall financial summary cards & filter dropdown interaction.
+  // Scoped by testid rather than hasText -- the breakdown table's own
+  // column headers ("Gross Revenue", "Total Expenses") repeat this text,
+  // so an unanchored [data-slot="card"] hasText match hits both.
+  await expect(page.getByTestId('gross-revenue-card')).toBeVisible();
+  await expect(page.getByTestId('total-expenses-card')).toBeVisible();
+  await expect(page.getByTestId('net-profit-card')).toBeVisible();
+
+  const filterTrigger = page.getByLabel('Filter category');
+  await filterTrigger.click();
+  await page.getByRole('option', { name: 'Cafe' }).click();
+  await expect(page.getByRole('columnheader', { name: 'Cafe Profit' })).toBeVisible();
+
+  await filterTrigger.click();
+  await page.getByRole('option', { name: 'Expenses' }).click();
+  await expect(page.getByRole('columnheader', { name: 'Total Expenses' })).toBeVisible();
+
+  await filterTrigger.click();
+  await page.getByRole('option', { name: 'All (Overall Summary)' }).click();
+  await expect(page.getByRole('columnheader', { name: 'Gross Revenue' })).toBeVisible();
 
   // --- Cost price + margin, then a cafe sale feeding Daily/Monthly Sales' profit ---
   await navigateTo(page, 'Products & Stock');

@@ -4,7 +4,7 @@ import { branding } from '../../src/config/branding';
 
 // The only spec that proves apps/desktop and apps/web actually interoperate
 // through the real api + Postgres -- every other spec in either suite only
-// exercises one app talking to itself. Runs before 09-backup-restore (which
+// exercises one app talking to itself. Runs before 10-backup-restore (which
 // leaves the desktop app unusable) and after the admin specs that need a
 // clean, freshly-seeded desktop app.
 //

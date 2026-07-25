@@ -12,7 +12,7 @@ test('logs in with username + PIN, reaches the app shell, and logs out cleanly',
   await login(page);
 
   await expect(page.getByRole('heading', { name: 'Daily Sales' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Rate Management' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rate Management', exact: true })).toBeVisible();
 
   await page.getByTestId('logout-button').click();
   await expect(page.locator('#login-username')).toBeVisible();

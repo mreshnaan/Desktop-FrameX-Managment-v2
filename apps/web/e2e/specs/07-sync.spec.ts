@@ -17,12 +17,12 @@ test('a customer added on one device appears on another after sync', async ({ br
   await login(pageA);
   await login(pageB);
 
-  await pageA.getByRole('button', { name: 'Customers' }).click();
+  await pageA.getByRole('button', { name: 'Customers', exact: true }).click();
   await pageA.locator('#customer-name').fill('E2E Sync Customer');
   await pageA.getByRole('button', { name: 'Add customer', exact: true }).click();
   await expect(pageA.getByRole('cell', { name: 'E2E Sync Customer', exact: true })).toBeVisible();
 
-  await pageB.getByRole('button', { name: 'Customers' }).click();
+  await pageB.getByRole('button', { name: 'Customers', exact: true }).click();
   // Device B's sync engine polls every 30s; give it room rather than
   // asserting on the very first cycle.
   await expect(pageB.getByRole('cell', { name: 'E2E Sync Customer', exact: true })).toBeVisible({ timeout: 35_000 });

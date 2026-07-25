@@ -17,16 +17,18 @@ test('an owner creates a cashier user, who then sees every business view but not
 
   await login(page, 'e2e-cashier', '4321');
 
-  // Every business view stays reachable for a cashier...
-  await expect(page.getByRole('button', { name: 'Daily Sales' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Monthly Sales' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Customers' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Credit Management' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Expenses' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Rate Management' })).toBeVisible();
+  // Every business view stays reachable for a cashier... (exact: true --
+  // "Customers" can also match an unrelated disabled "Add customers first"
+  // button if a stale session row happens to be on screen.)
+  await expect(page.getByRole('button', { name: 'Daily Sales', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Monthly Sales', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Customers', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Credit Management', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Expenses', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rate Management', exact: true })).toBeVisible();
   // ...but User Management is hidden entirely, matching CASHIER's permission
   // set (BUSINESS_PERMISSIONS only, see apps/api/src/shared/constants/roles.ts).
-  await expect(page.getByRole('button', { name: 'User Management' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'User Management', exact: true })).toHaveCount(0);
 
   await page.getByTestId('logout-button').click();
 });

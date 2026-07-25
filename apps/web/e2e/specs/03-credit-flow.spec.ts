@@ -19,8 +19,14 @@ test('a Credit session raises the customer balance, and Record payment lowers it
   // silently fail validation and leave the method at its default (Cash).
   await row.getByLabel('Customer').click();
   await page.getByRole('option', { name: 'E2E Ravi Kumar' }).click();
+  // Wait for the customer selection to actually commit (its own async
+  // updateSession + re-render) before switching payment method -- otherwise
+  // the method commit can read a still-stale session with no customerId yet
+  // and get silently rejected by the same Credit-needs-a-customer check.
+  await expect(row.getByLabel('Customer')).toContainText('E2E Ravi Kumar');
   await row.getByLabel('Payment method').click();
   await page.getByRole('option', { name: 'Credit' }).click();
+  await expect(row.getByLabel('Payment method')).toContainText('Credit');
 
   await navigateTo(page, 'Credit Management');
   await expect(page.getByTestId('balance-E2E Ravi Kumar')).toContainText('300');

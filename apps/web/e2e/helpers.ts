@@ -14,6 +14,9 @@ export async function login(page: Page, username = E2E_USERNAME, pin = E2E_PIN):
 
 // The sidebar renders each nav item as a <button> (SidebarMenuButton with an
 // onClick handler, not an <a href>) -- matches apps/desktop/e2e/helpers.ts.
+// exact: true -- an unanchored match can also hit an unrelated disabled
+// button whose label happens to contain the nav label as a substring (e.g.
+// "Customers" also matches SessionRow's "Add customers first").
 export async function navigateTo(page: Page, label: string): Promise<void> {
-  await page.getByRole('button', { name: label }).click();
+  await page.getByRole('button', { name: label, exact: true }).click();
 }

@@ -62,7 +62,9 @@ export async function loginWeb(page: Page, username = E2E_USERNAME, pin = E2E_PI
 
 // The sidebar renders each nav item as a <button> (SidebarMenuButton with an
 // onClick handler, not an <a href>), so this looks for a button by name --
-// not a link.
+// not a link. exact: true -- an unanchored match can also hit an unrelated
+// button whose label happens to contain the nav label as a substring (e.g.
+// "Backup & Restore" also matches a disabled "Restore" button elsewhere).
 export async function navigateTo(page: Page, label: string): Promise<void> {
-  await page.getByRole('button', { name: label }).click();
+  await page.getByRole('button', { name: label, exact: true }).click();
 }

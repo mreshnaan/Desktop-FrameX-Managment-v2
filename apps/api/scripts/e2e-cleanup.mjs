@@ -8,6 +8,14 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
+  // ActivityLog/SyncLog are append-only audit trails with no update/delete
+  // path in the app itself, so every e2e run's rows pile up forever unless
+  // swept here -- unlike every other table below, there's no soft-delete or
+  // later overwrite to naturally bound this. userName is denormalized (set
+  // at write time), so this still matches even after the user row itself is
+  // deleted a few lines down.
+  await prisma.activityLog.deleteMany({ where: { userName: { startsWith: 'E2E ' } } });
+  await prisma.syncLog.deleteMany({ where: { userName: { startsWith: 'E2E ' } } });
   // Users before roles: Role.id is FK-RESTRICTed by User.roleId, so a
   // custom role created by the roles spec can't be deleted while the user
   // it was assigned to still exists. RolePermission rows cascade with it.

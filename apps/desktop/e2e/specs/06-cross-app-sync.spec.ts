@@ -64,6 +64,18 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     await webPage.getByRole('button', { name: 'Customers' }).click();
     await expect(webPage.getByRole('cell', { name: 'E2E Cross D2W', exact: true })).toBeVisible({ timeout: 15_000 });
 
+    // The push that just landed on the server should be attributed to the
+    // real logged-in user (E2E Owner, per apps/api/scripts/e2e-seed.mjs),
+    // both in the Activity Log (what changed) and the Sync Log (that a push
+    // happened at all).
+    await desktopPage.bringToFront();
+    await navigateTo(desktopPage, 'Activity & Sync Logs');
+    await expect(desktopPage.getByRole('cell', { name: /Created customer "E2E Cross D2W"/ }).first()).toBeVisible();
+    await expect(desktopPage.getByRole('cell', { name: 'E2E Owner', exact: true }).first()).toBeVisible();
+    await desktopPage.getByRole('button', { name: 'Sync Log', exact: true }).click();
+    await expect(desktopPage.getByRole('cell', { name: 'push', exact: true }).first()).toBeVisible();
+
+    await navigateTo(desktopPage, 'Customers');
     await desktopPage.getByRole('button', { name: 'Delete E2E Cross D2W' }).click();
   });
 

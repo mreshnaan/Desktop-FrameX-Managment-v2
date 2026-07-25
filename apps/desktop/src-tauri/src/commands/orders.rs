@@ -1,3 +1,4 @@
+use crate::commands::current_actor::get_current_actor;
 use crate::commands::products::payload as product_payload;
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::{Order, OrderItem, OrderWithItems, Product};
@@ -36,6 +37,7 @@ pub(crate) async fn do_create_order(
         return Err("A customer must be selected for Credit orders".to_string());
     }
 
+    let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let now = crate::time::now_iso();
     let order_id = Uuid::new_v4().to_string();
@@ -73,12 +75,13 @@ pub(crate) async fn do_create_order(
     // Pass 2: the order row must exist before any order_items row that
     // references it (order_items.order_id has a FK on orders.id) -- insert
     // it first, using the total computed in pass 1.
-    sqlx::query("INSERT INTO orders (id, method, total, customer_id, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, NULL)")
+    sqlx::query("INSERT INTO orders (id, method, total, customer_id, updated_at, deleted_at, created_by) VALUES (?, ?, ?, ?, ?, NULL, ?)")
         .bind(&order_id)
         .bind(&method)
         .bind(total)
         .bind(&customer_id)
         .bind(&now)
+        .bind(&actor)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
@@ -94,6 +97,7 @@ pub(crate) async fn do_create_order(
     let order_payload = json!({
         "id": order.id, "method": order.method, "total": order.total,
         "customerId": order.customer_id, "updatedAt": order.updated_at, "deletedAt": null,
+        "createdBy": actor,
     });
     enqueue_outbox_tx(&mut tx, "orders", "upsert", &order_id, &order_payload)
         .await
@@ -104,32 +108,34 @@ pub(crate) async fn do_create_order(
     let mut order_items: Vec<OrderItem> = Vec::new();
     for (product, qty, line_total) in validated {
         let new_stock_qty = product.stock_qty - qty;
-        sqlx::query("UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?")
+        sqlx::query("UPDATE products SET stock_qty = ?, updated_at = ?, updated_by = ? WHERE id = ?")
             .bind(new_stock_qty)
             .bind(&now)
+            .bind(&actor)
             .bind(&product.id)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
         let updated_product = Product { stock_qty: new_stock_qty, updated_at: now.clone(), ..product.clone() };
-        enqueue_outbox_tx(&mut tx, "products", "upsert", &product.id, &product_payload(&updated_product))
+        enqueue_outbox_tx(&mut tx, "products", "upsert", &product.id, &product_payload(&updated_product, &None, &actor))
             .await
             .map_err(|e| e.to_string())?;
 
         let movement_id = Uuid::new_v4().to_string();
         sqlx::query(
-            "INSERT INTO stock_movements (id, product_id, delta, reason, note, updated_at) VALUES (?, ?, ?, 'sale', NULL, ?)",
+            "INSERT INTO stock_movements (id, product_id, delta, reason, note, updated_at, created_by) VALUES (?, ?, ?, 'sale', NULL, ?, ?)",
         )
         .bind(&movement_id)
         .bind(&product.id)
         .bind(-qty)
         .bind(&now)
+        .bind(&actor)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
         let movement_payload = json!({
             "id": movement_id, "productId": product.id, "delta": -qty,
-            "reason": "sale", "note": null, "updatedAt": now,
+            "reason": "sale", "note": null, "updatedAt": now, "createdBy": actor,
         });
         enqueue_outbox_tx(&mut tx, "stockMovements", "upsert", &movement_id, &movement_payload)
             .await
@@ -215,6 +221,36 @@ mod tests {
         .fetch_one(pool)
         .await
         .unwrap()
+    }
+
+    #[tokio::test]
+    async fn checkout_stamps_created_by_on_the_order_and_the_sold_products_updated_by() {
+        let pool = setup_test_db().await;
+        let product = seed_product(&pool, 10).await;
+        crate::commands::current_actor::do_set_current_actor(&pool, "cashier-1".to_string()).await.unwrap();
+
+        let result = do_create_order(
+            &pool,
+            vec![CartItemInput { product_id: product.id.clone(), qty: 3 }],
+            "Cash".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let (order_created_by,): (Option<String>,) = sqlx::query_as("SELECT created_by FROM orders WHERE id = ?")
+            .bind(&result.order.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(order_created_by, Some("cashier-1".to_string()));
+
+        let (product_updated_by,): (Option<String>,) = sqlx::query_as("SELECT updated_by FROM products WHERE id = ?")
+            .bind(&product.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(product_updated_by, Some("cashier-1".to_string()));
     }
 
     #[tokio::test]

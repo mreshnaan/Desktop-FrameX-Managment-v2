@@ -1,3 +1,4 @@
+use crate::commands::current_actor::get_current_actor;
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::Station;
 use serde_json::json;
@@ -19,17 +20,23 @@ pub async fn list_stations(pool: State<'_, SqlitePool>) -> Result<Vec<Station>, 
 
 pub(crate) async fn do_create_station(pool: &SqlitePool, category_id: String, name: String) -> Result<Station, String> {
     let station = Station { id: Uuid::new_v4().to_string(), category_id, name };
+    let actor = get_current_actor(pool).await;
 
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-    sqlx::query("INSERT INTO stations (id, category_id, name) VALUES (?, ?, ?)")
+    sqlx::query("INSERT INTO stations (id, category_id, name, created_by, updated_by) VALUES (?, ?, ?, ?, ?)")
         .bind(&station.id)
         .bind(&station.category_id)
         .bind(&station.name)
+        .bind(&actor)
+        .bind(&actor)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
 
-    let payload = json!({ "id": station.id, "categoryId": station.category_id, "name": station.name });
+    let payload = json!({
+        "id": station.id, "categoryId": station.category_id, "name": station.name,
+        "createdBy": actor, "updatedBy": actor,
+    });
     enqueue_outbox_tx(&mut tx, "stations", "upsert", &station.id, &payload)
         .await
         .map_err(|e| e.to_string())?;
@@ -44,6 +51,7 @@ pub async fn create_station(pool: State<'_, SqlitePool>, category_id: String, na
 }
 
 pub(crate) async fn do_update_station(pool: &SqlitePool, id: String, name: String) -> Result<Station, String> {
+    let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let existing: Station = sqlx::query_as("SELECT id, category_id, name FROM stations WHERE id = ?")
@@ -53,14 +61,17 @@ pub(crate) async fn do_update_station(pool: &SqlitePool, id: String, name: Strin
         .map_err(|e| e.to_string())?;
     let station = Station { id: existing.id, category_id: existing.category_id, name };
 
-    sqlx::query("UPDATE stations SET name = ? WHERE id = ?")
+    sqlx::query("UPDATE stations SET name = ?, updated_by = ? WHERE id = ?")
         .bind(&station.name)
+        .bind(&actor)
         .bind(&id)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
 
-    let payload = json!({ "id": station.id, "categoryId": station.category_id, "name": station.name });
+    let payload = json!({
+        "id": station.id, "categoryId": station.category_id, "name": station.name, "updatedBy": actor,
+    });
     enqueue_outbox_tx(&mut tx, "stations", "upsert", &id, &payload)
         .await
         .map_err(|e| e.to_string())?;

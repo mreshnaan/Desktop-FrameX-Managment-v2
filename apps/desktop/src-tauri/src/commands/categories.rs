@@ -1,3 +1,4 @@
+use crate::commands::current_actor::get_current_actor;
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::Category;
 use serde_json::json;
@@ -29,18 +30,22 @@ pub(crate) async fn do_create_category(
     billing_type: String,
 ) -> Result<Category, String> {
     let category = Category { id: Uuid::new_v4().to_string(), name, billing_type };
+    let actor = get_current_actor(pool).await;
 
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-    sqlx::query("INSERT INTO categories (id, name, billing_type) VALUES (?, ?, ?)")
+    sqlx::query("INSERT INTO categories (id, name, billing_type, created_by, updated_by) VALUES (?, ?, ?, ?, ?)")
         .bind(&category.id)
         .bind(&category.name)
         .bind(&category.billing_type)
+        .bind(&actor)
+        .bind(&actor)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
 
     let payload = json!({
         "id": category.id, "name": category.name, "billingType": category.billing_type,
+        "createdBy": actor, "updatedBy": actor,
     });
     enqueue_outbox_tx(&mut tx, "categories", "upsert", &category.id, &payload)
         .await
@@ -66,11 +71,13 @@ pub(crate) async fn do_update_category(
     billing_type: String,
 ) -> Result<Category, String> {
     let category = Category { id: id.clone(), name, billing_type };
+    let actor = get_current_actor(pool).await;
 
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-    sqlx::query("UPDATE categories SET name = ?, billing_type = ? WHERE id = ?")
+    sqlx::query("UPDATE categories SET name = ?, billing_type = ?, updated_by = ? WHERE id = ?")
         .bind(&category.name)
         .bind(&category.billing_type)
+        .bind(&actor)
         .bind(&id)
         .execute(&mut *tx)
         .await
@@ -78,6 +85,7 @@ pub(crate) async fn do_update_category(
 
     let payload = json!({
         "id": category.id, "name": category.name, "billingType": category.billing_type,
+        "updatedBy": actor,
     });
     enqueue_outbox_tx(&mut tx, "categories", "upsert", &id, &payload)
         .await

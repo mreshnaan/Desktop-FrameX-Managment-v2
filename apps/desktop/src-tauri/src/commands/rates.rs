@@ -1,3 +1,4 @@
+use crate::commands::current_actor::get_current_actor;
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::Rate;
 use serde_json::json;
@@ -24,6 +25,13 @@ pub(crate) async fn do_upsert_rate(
     half_rate: Option<i64>,
     frame_rate: Option<i64>,
 ) -> Result<Rate, String> {
+    // Resolved before pool.begin() below -- get_current_actor(pool) acquires
+    // its own connection from the pool, which would otherwise contend with
+    // (or, on a pool sized down to a single connection, silently fail
+    // against) the one tx already holds. Caught by a real test failure, not
+    // assumed: a max_connections(1) test pool made this deadlock/starve
+    // into a silently-swallowed None instead of the real actor id.
+    let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let existing_id: Option<(String,)> = sqlx::query_as("SELECT id FROM rates WHERE category_id = ?")
@@ -41,10 +49,15 @@ pub(crate) async fn do_upsert_rate(
         updated_at: crate::time::now_iso(),
     };
 
+    // created_by is deliberately absent from the ON CONFLICT UPDATE SET
+    // clause -- it's set once on the initial INSERT and never touched
+    // again, so a later edit's updated_by doesn't clobber who originally
+    // created the rate.
     sqlx::query(
-        "INSERT INTO rates (id, category_id, hour_rate, half_rate, frame_rate, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+        "INSERT INTO rates (id, category_id, hour_rate, half_rate, frame_rate, updated_at, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET hour_rate = excluded.hour_rate, half_rate = excluded.half_rate,
-           frame_rate = excluded.frame_rate, updated_at = excluded.updated_at",
+           frame_rate = excluded.frame_rate, updated_at = excluded.updated_at, updated_by = excluded.updated_by",
     )
     .bind(&rate.id)
     .bind(&rate.category_id)
@@ -52,13 +65,15 @@ pub(crate) async fn do_upsert_rate(
     .bind(rate.half_rate)
     .bind(rate.frame_rate)
     .bind(&rate.updated_at)
+    .bind(&actor)
+    .bind(&actor)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
 
     let payload = json!({
         "categoryId": rate.category_id, "hour": rate.hour_rate, "half": rate.half_rate,
-        "value": rate.frame_rate, "updatedAt": rate.updated_at,
+        "value": rate.frame_rate, "updatedAt": rate.updated_at, "updatedBy": actor,
     });
     enqueue_outbox_tx(&mut tx, "rates", "upsert", &rate.id, &payload)
         .await
@@ -94,6 +109,26 @@ mod tests {
 
         assert_eq!(rate.category_id, category.id);
         assert_eq!(rate.hour_rate, Some(200));
+    }
+
+    #[tokio::test]
+    async fn upserting_again_updates_updated_by_but_never_overwrites_the_original_created_by() {
+        let pool = setup_test_db().await;
+        let category = do_create_category(&pool, "8-Ball".to_string(), "time".to_string()).await.unwrap();
+        crate::commands::current_actor::do_set_current_actor(&pool, "owner-1".to_string()).await.unwrap();
+        let rate = do_upsert_rate(&pool, category.id.clone(), Some(200), Some(100), None).await.unwrap();
+
+        crate::commands::current_actor::do_set_current_actor(&pool, "owner-2".to_string()).await.unwrap();
+        do_upsert_rate(&pool, category.id.clone(), Some(250), Some(125), None).await.unwrap();
+
+        let (created_by, updated_by): (Option<String>, Option<String>) =
+            sqlx::query_as("SELECT created_by, updated_by FROM rates WHERE id = ?")
+                .bind(&rate.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(created_by, Some("owner-1".to_string()), "created_by must survive a later edit by someone else");
+        assert_eq!(updated_by, Some("owner-2".to_string()));
     }
 
     #[tokio::test]

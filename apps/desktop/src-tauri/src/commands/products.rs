@@ -1,3 +1,4 @@
+use crate::commands::current_actor::get_current_actor;
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::{Product, StockMovement};
 use serde_json::json;
@@ -5,11 +6,12 @@ use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
-pub(crate) fn payload(p: &Product) -> serde_json::Value {
+pub(crate) fn payload(p: &Product, created_by: &Option<String>, updated_by: &Option<String>) -> serde_json::Value {
     json!({
         "id": p.id, "categoryId": p.category_id, "name": p.name, "price": p.price, "cost": p.cost,
         "stockQty": p.stock_qty, "lowStockThreshold": p.low_stock_threshold, "barcode": p.barcode,
         "active": p.active, "updatedAt": p.updated_at, "deletedAt": p.deleted_at,
+        "createdBy": created_by, "updatedBy": updated_by,
     })
 }
 
@@ -55,11 +57,12 @@ pub(crate) async fn do_create_product(
         updated_at: crate::time::now_iso(),
         deleted_at: None,
     };
+    let actor = get_current_actor(pool).await;
 
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query(
-        "INSERT INTO products (id, category_id, name, price, cost, stock_qty, low_stock_threshold, barcode, active, updated_at, deleted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+        "INSERT INTO products (id, category_id, name, price, cost, stock_qty, low_stock_threshold, barcode, active, updated_at, deleted_at, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
     )
     .bind(&product.id)
     .bind(&product.category_id)
@@ -71,11 +74,13 @@ pub(crate) async fn do_create_product(
     .bind(&product.barcode)
     .bind(product.active)
     .bind(&product.updated_at)
+    .bind(&actor)
+    .bind(&actor)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
 
-    enqueue_outbox_tx(&mut tx, "products", "upsert", &product.id, &payload(&product))
+    enqueue_outbox_tx(&mut tx, "products", "upsert", &product.id, &payload(&product, &actor, &actor))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -107,6 +112,7 @@ pub(crate) async fn do_update_product(
     barcode: Option<String>,
     active: bool,
 ) -> Result<Product, String> {
+    let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let existing: Product = sqlx::query_as(
@@ -125,7 +131,7 @@ pub(crate) async fn do_update_product(
     };
 
     sqlx::query(
-        "UPDATE products SET name = ?, price = ?, cost = ?, low_stock_threshold = ?, barcode = ?, active = ?, updated_at = ? WHERE id = ?",
+        "UPDATE products SET name = ?, price = ?, cost = ?, low_stock_threshold = ?, barcode = ?, active = ?, updated_at = ?, updated_by = ? WHERE id = ?",
     )
     .bind(&product.name)
     .bind(product.price)
@@ -134,12 +140,13 @@ pub(crate) async fn do_update_product(
     .bind(&product.barcode)
     .bind(product.active)
     .bind(&product.updated_at)
+    .bind(&actor)
     .bind(&id)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
 
-    enqueue_outbox_tx(&mut tx, "products", "upsert", &id, &payload(&product))
+    enqueue_outbox_tx(&mut tx, "products", "upsert", &id, &payload(&product, &None, &actor))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -174,6 +181,7 @@ pub(crate) async fn do_adjust_stock(
     reason: String,
     note: Option<String>,
 ) -> Result<Product, String> {
+    let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let existing: Product = sqlx::query_as(
@@ -195,14 +203,15 @@ pub(crate) async fn do_adjust_stock(
 
     let product = Product { stock_qty: new_stock_qty, updated_at: crate::time::now_iso(), ..existing };
 
-    sqlx::query("UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?")
+    sqlx::query("UPDATE products SET stock_qty = ?, updated_at = ?, updated_by = ? WHERE id = ?")
         .bind(product.stock_qty)
         .bind(&product.updated_at)
+        .bind(&actor)
         .bind(&product_id)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
-    enqueue_outbox_tx(&mut tx, "products", "upsert", &product_id, &payload(&product))
+    enqueue_outbox_tx(&mut tx, "products", "upsert", &product_id, &payload(&product, &None, &actor))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -214,19 +223,21 @@ pub(crate) async fn do_adjust_stock(
         note,
         updated_at: product.updated_at.clone(),
     };
-    sqlx::query("INSERT INTO stock_movements (id, product_id, delta, reason, note, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+    sqlx::query("INSERT INTO stock_movements (id, product_id, delta, reason, note, updated_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .bind(&movement.id)
         .bind(&movement.product_id)
         .bind(movement.delta)
         .bind(&movement.reason)
         .bind(&movement.note)
         .bind(&movement.updated_at)
+        .bind(&actor)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
     let movement_payload = json!({
         "id": movement.id, "productId": movement.product_id, "delta": movement.delta,
         "reason": movement.reason, "note": movement.note, "updatedAt": movement.updated_at,
+        "createdBy": actor,
     });
     enqueue_outbox_tx(&mut tx, "stockMovements", "upsert", &movement.id, &movement_payload)
         .await

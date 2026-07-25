@@ -24,6 +24,8 @@ pub fn run() {
             auth::store_auth_tokens,
             auth::get_auth_tokens,
             auth::clear_auth_tokens,
+            commands::current_actor::set_current_actor,
+            commands::current_actor::clear_current_actor,
             commands::categories::list_categories,
             commands::categories::create_category,
             commands::categories::update_category,

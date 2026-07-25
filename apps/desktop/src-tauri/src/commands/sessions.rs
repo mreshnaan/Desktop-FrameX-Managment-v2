@@ -1,3 +1,4 @@
+use crate::commands::current_actor::get_current_actor;
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::Session;
 use crate::money::{calc_frame_amount, calc_time_amount};
@@ -67,11 +68,12 @@ pub async fn list_sessions_for_date(pool: State<'_, SqlitePool>, date: String) -
     do_list_sessions_for_date(pool.inner(), date).await
 }
 
-fn session_payload(s: &Session) -> serde_json::Value {
+fn session_payload(s: &Session, created_by: &Option<String>, updated_by: &Option<String>) -> serde_json::Value {
     json!({
         "id": s.id, "stationId": s.station_id, "date": s.date, "start": s.start, "end": s.end,
         "amount": s.amount, "method": s.method, "customerId": s.customer_id,
         "updatedAt": s.updated_at, "deletedAt": s.deleted_at,
+        "createdBy": created_by, "updatedBy": updated_by,
     })
 }
 
@@ -107,10 +109,11 @@ pub(crate) async fn do_create_session(
         deleted_at: None,
     };
 
+    let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query(
-        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
     )
     .bind(&session.id)
     .bind(&session.station_id)
@@ -121,11 +124,13 @@ pub(crate) async fn do_create_session(
     .bind(&session.method)
     .bind(&session.customer_id)
     .bind(&session.updated_at)
+    .bind(&actor)
+    .bind(&actor)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
 
-    enqueue_outbox_tx(&mut tx, "sessions", "upsert", &session.id, &session_payload(&session))
+    enqueue_outbox_tx(&mut tx, "sessions", "upsert", &session.id, &session_payload(&session, &actor, &actor))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -155,6 +160,7 @@ pub struct SessionPatch {
 }
 
 pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: SessionPatch) -> Result<Session, String> {
+    let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let mut existing: Session = sqlx::query_as(
@@ -199,7 +205,7 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     existing.updated_at = crate::time::now_iso();
 
     sqlx::query(
-        "UPDATE sessions SET start = ?, \"end\" = ?, amount = ?, method = ?, customer_id = ?, updated_at = ? WHERE id = ?",
+        "UPDATE sessions SET start = ?, \"end\" = ?, amount = ?, method = ?, customer_id = ?, updated_at = ?, updated_by = ? WHERE id = ?",
     )
     .bind(&existing.start)
     .bind(&existing.end)
@@ -207,12 +213,13 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     .bind(&existing.method)
     .bind(&existing.customer_id)
     .bind(&existing.updated_at)
+    .bind(&actor)
     .bind(&id)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
 
-    enqueue_outbox_tx(&mut tx, "sessions", "upsert", &id, &session_payload(&existing))
+    enqueue_outbox_tx(&mut tx, "sessions", "upsert", &id, &session_payload(&existing, &None, &actor))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -227,11 +234,13 @@ pub async fn update_session(pool: State<'_, SqlitePool>, id: String, patch: Sess
 
 pub(crate) async fn do_delete_session(pool: &SqlitePool, id: String) -> Result<(), String> {
     let now = crate::time::now_iso();
+    let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
-    let result = sqlx::query("UPDATE sessions SET deleted_at = ?, updated_at = ? WHERE id = ?")
+    let result = sqlx::query("UPDATE sessions SET deleted_at = ?, updated_at = ?, updated_by = ? WHERE id = ?")
         .bind(&now)
         .bind(&now)
+        .bind(&actor)
         .bind(&id)
         .execute(&mut *tx)
         .await
@@ -240,7 +249,7 @@ pub(crate) async fn do_delete_session(pool: &SqlitePool, id: String) -> Result<(
         return Ok(());
     }
 
-    enqueue_outbox_tx(&mut tx, "sessions", "delete", &id, &json!({ "id": id }))
+    enqueue_outbox_tx(&mut tx, "sessions", "delete", &id, &json!({ "id": id, "updatedBy": actor }))
         .await
         .map_err(|e| e.to_string())?;
 

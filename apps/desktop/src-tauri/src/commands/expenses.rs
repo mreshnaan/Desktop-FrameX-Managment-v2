@@ -1,3 +1,4 @@
+use crate::commands::current_actor::get_current_actor;
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::Expense;
 use serde_json::json;
@@ -21,10 +22,11 @@ pub async fn list_expenses_for_date(pool: State<'_, SqlitePool>, date: String) -
     do_list_expenses_for_date(pool.inner(), date).await
 }
 
-fn payload(e: &Expense) -> serde_json::Value {
+fn payload(e: &Expense, created_by: &Option<String>, updated_by: &Option<String>) -> serde_json::Value {
     json!({
         "id": e.id, "date": e.date, "description": e.description, "amount": e.amount,
         "method": e.method, "updatedAt": e.updated_at, "deletedAt": e.deleted_at,
+        "createdBy": created_by, "updatedBy": updated_by,
     })
 }
 
@@ -38,10 +40,12 @@ pub(crate) async fn do_create_expense(pool: &SqlitePool, date: String) -> Result
         updated_at: crate::time::now_iso(),
         deleted_at: None,
     };
+    let actor = get_current_actor(pool).await;
 
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query(
-        "INSERT INTO expenses (id, date, description, amount, method, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, NULL)",
+        "INSERT INTO expenses (id, date, description, amount, method, updated_at, deleted_at, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)",
     )
     .bind(&expense.id)
     .bind(&expense.date)
@@ -49,11 +53,13 @@ pub(crate) async fn do_create_expense(pool: &SqlitePool, date: String) -> Result
     .bind(expense.amount)
     .bind(&expense.method)
     .bind(&expense.updated_at)
+    .bind(&actor)
+    .bind(&actor)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
 
-    enqueue_outbox_tx(&mut tx, "expenses", "upsert", &expense.id, &payload(&expense))
+    enqueue_outbox_tx(&mut tx, "expenses", "upsert", &expense.id, &payload(&expense, &actor, &actor))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -73,6 +79,7 @@ pub(crate) async fn do_update_expense(
     amount: Option<i64>,
     method: Option<String>,
 ) -> Result<Expense, String> {
+    let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let mut existing: Expense = sqlx::query_as(
         "SELECT id, date, description, amount, method, updated_at, deleted_at FROM expenses WHERE id = ?",
@@ -87,17 +94,18 @@ pub(crate) async fn do_update_expense(
     if let Some(v) = method { existing.method = v; }
     existing.updated_at = crate::time::now_iso();
 
-    sqlx::query("UPDATE expenses SET description = ?, amount = ?, method = ?, updated_at = ? WHERE id = ?")
+    sqlx::query("UPDATE expenses SET description = ?, amount = ?, method = ?, updated_at = ?, updated_by = ? WHERE id = ?")
         .bind(&existing.description)
         .bind(existing.amount)
         .bind(&existing.method)
         .bind(&existing.updated_at)
+        .bind(&actor)
         .bind(&id)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
 
-    enqueue_outbox_tx(&mut tx, "expenses", "upsert", &id, &payload(&existing))
+    enqueue_outbox_tx(&mut tx, "expenses", "upsert", &id, &payload(&existing, &None, &actor))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -118,11 +126,13 @@ pub async fn update_expense(
 
 pub(crate) async fn do_delete_expense(pool: &SqlitePool, id: String) -> Result<(), String> {
     let now = crate::time::now_iso();
+    let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
-    let result = sqlx::query("UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ?")
+    let result = sqlx::query("UPDATE expenses SET deleted_at = ?, updated_at = ?, updated_by = ? WHERE id = ?")
         .bind(&now)
         .bind(&now)
+        .bind(&actor)
         .bind(&id)
         .execute(&mut *tx)
         .await
@@ -131,7 +141,7 @@ pub(crate) async fn do_delete_expense(pool: &SqlitePool, id: String) -> Result<(
         return Ok(());
     }
 
-    enqueue_outbox_tx(&mut tx, "expenses", "delete", &id, &json!({ "id": id }))
+    enqueue_outbox_tx(&mut tx, "expenses", "delete", &id, &json!({ "id": id, "updatedBy": actor }))
         .await
         .map_err(|e| e.to_string())?;
 

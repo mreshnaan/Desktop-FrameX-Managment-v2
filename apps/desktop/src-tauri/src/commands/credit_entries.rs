@@ -1,3 +1,4 @@
+use crate::commands::current_actor::get_current_actor;
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::CreditEntry;
 use serde_json::json;
@@ -32,10 +33,11 @@ pub(crate) async fn do_create_credit_entry(
         amount,
         updated_at: crate::time::now_iso(),
     };
+    let actor = get_current_actor(pool).await;
 
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query(
-        "INSERT INTO credit_entries (id, customer_id, date, type, amount, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO credit_entries (id, customer_id, date, type, amount, updated_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&entry.id)
     .bind(&entry.customer_id)
@@ -43,6 +45,7 @@ pub(crate) async fn do_create_credit_entry(
     .bind(&entry.entry_type)
     .bind(entry.amount)
     .bind(&entry.updated_at)
+    .bind(&actor)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
@@ -50,6 +53,7 @@ pub(crate) async fn do_create_credit_entry(
     let payload = json!({
         "id": entry.id, "customerId": entry.customer_id, "date": entry.date,
         "type": entry.entry_type, "amount": entry.amount, "updatedAt": entry.updated_at,
+        "createdBy": actor,
     });
     enqueue_outbox_tx(&mut tx, "creditEntries", "upsert", &entry.id, &payload)
         .await

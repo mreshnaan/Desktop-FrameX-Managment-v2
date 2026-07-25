@@ -1,6 +1,7 @@
 pub mod backup;
 pub mod categories;
 pub mod credit_entries;
+pub mod current_actor;
 pub mod customers;
 pub mod expenses;
 pub mod orders;

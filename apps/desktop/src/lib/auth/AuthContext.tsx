@@ -1,6 +1,16 @@
 import { createContext, useEffect, useState, type ReactNode } from 'react';
-import { apiFetch } from '../api/client';
+import { apiFetch, ApiError } from '../api/client';
 import { commands } from '../tauri/commands';
+
+// The server rejects a refresh token with 401 specifically when it's
+// genuinely invalid/expired/tampered (see apps/api's auth.routes.ts) --
+// that's the only case a stored session should be cleared. Any other
+// failure (network blip, api unreachable, 5xx) must leave the stored
+// refresh token alone so the next attempt can still succeed; treating every
+// failure the same would log a user out over a transient hiccup.
+function isGenuinelyInvalidRefreshToken(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 401;
+}
 
 interface AuthUser {
   id: string;
@@ -43,8 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ refreshToken: tokens.refreshToken }),
         });
         setState({ user: result.user, accessToken: result.accessToken });
-      } catch {
-        await commands.clearAuthTokens();
+      } catch (e) {
+        if (isGenuinelyInvalidRefreshToken(e)) await commands.clearAuthTokens();
       } finally {
         setReady(true);
       }
@@ -78,10 +88,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setState({ user: result.user, accessToken: result.accessToken });
       return result.accessToken;
-    } catch {
-      // Refresh token itself is expired/invalid -- a real logout is better
-      // than silently failing forever.
-      logout();
+    } catch (e) {
+      // Only a genuinely invalid/expired refresh token warrants a real
+      // logout -- a transient failure (network blip, api briefly down)
+      // must not wipe a still-valid stored session.
+      if (isGenuinelyInvalidRefreshToken(e)) logout();
       return null;
     }
   }

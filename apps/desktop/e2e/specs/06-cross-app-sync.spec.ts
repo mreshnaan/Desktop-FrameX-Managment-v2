@@ -75,102 +75,135 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     await desktopPage.getByRole('button', { name: 'Sync Log', exact: true }).click();
     await expect(desktopPage.getByRole('cell', { name: 'push', exact: true }).first()).toBeVisible();
 
+    // The same log entries must be visible from web too -- Activity/Sync Log
+    // is a server-side, read-only view on both apps, not something either
+    // client keeps a local copy of.
+    await webPage.bringToFront();
+    await navigateTo(webPage, 'Activity & Sync Logs');
+    await expect(webPage.getByRole('cell', { name: /Created customer "E2E Cross D2W"/ }).first()).toBeVisible();
+    await expect(webPage.getByRole('cell', { name: 'E2E Owner', exact: true }).first()).toBeVisible();
+    await webPage.getByRole('button', { name: 'Sync Log', exact: true }).click();
+    await expect(webPage.getByRole('cell', { name: 'push', exact: true }).first()).toBeVisible();
+
+    await desktopPage.bringToFront();
     await navigateTo(desktopPage, 'Customers');
     await desktopPage.getByRole('button', { name: 'Delete E2E Cross D2W' }).click();
   });
 
-  test('a customer created on web reaches desktop', async () => {
+  test('a cafe product and the sale that decrements its stock are visible read-only on web', async () => {
     test.setTimeout(60_000);
-    await webPage.getByRole('button', { name: 'Customers' }).click();
-    await webPage.locator('#customer-name').fill('E2E Cross W2D');
-    await webPage.getByRole('button', { name: 'Add customer', exact: true }).click();
-    await expect(webPage.getByRole('cell', { name: 'E2E Cross W2D', exact: true })).toBeVisible();
+    await navigateTo(desktopPage, 'Products & Stock');
+    await desktopPage.locator('#new-product-category').fill('E2E Cafe Sync Category');
+    await desktopPage.getByRole('button', { name: 'Add category', exact: true }).click();
+    await expect(desktopPage.locator('#new-product-category')).toHaveValue('');
 
-    // Force web to push immediately (reload), then wait out desktop's own
-    // pull interval -- no reload on the desktop side.
+    await desktopPage.locator('#new-product-cat').click();
+    await desktopPage.getByRole('option', { name: 'E2E Cafe Sync Category' }).click();
+    await desktopPage.locator('#new-product-name').fill('E2E Cafe Sync Cola');
+    await desktopPage.locator('#new-product-price').fill('60');
+    await desktopPage.getByRole('button', { name: 'Add product' }).click();
+
+    // Scoped to this test's own category card: other specs in this suite
+    // (03-cafe.spec.ts) leave their own products behind in a differently
+    // named category, and categories don't render in creation order (it's
+    // alphabetical), so an unscoped .last() can resolve to the wrong one.
+    const categoryCard = desktopPage.locator('[data-slot="card"]').filter({ hasText: 'E2E Cafe Sync Category' });
+    await expect(categoryCard.locator('input[id^="product-name-"]').last()).toHaveValue('E2E Cafe Sync Cola');
+
+    await categoryCard.locator('input[id^="product-stock-"]').last().fill('10');
+    await categoryCard.getByRole('button', { name: 'Apply' }).last().click();
+    await expect(categoryCard.getByText('Stock: 10')).toBeVisible();
+
+    await navigateTo(desktopPage, 'Cafe');
+    await desktopPage.getByRole('button', { name: /^E2E Cafe Sync Cola/ }).click();
+    await desktopPage.getByRole('button', { name: 'Complete sale' }).click();
+    await expect(desktopPage.getByText('No items yet.')).toBeVisible();
+
+    await waitForDesktopSync();
     await reloadWebAndWait();
-    await webPage.getByRole('button', { name: 'Customers' }).click();
-    await desktopPage.bringToFront();
-    await navigateTo(desktopPage, 'Customers');
-    await expect(desktopPage.getByRole('cell', { name: 'E2E Cross W2D', exact: true })).toBeVisible({
-      timeout: DESKTOP_SYNC_WAIT,
-    });
+    await navigateTo(webPage, 'Cafe');
+    // Scoped to this product's own row: 03-cafe.spec.ts's "E2E Cola" also
+    // sits at stock 9, so an unscoped "9" cell match would be ambiguous.
+    const webProductRow = webPage.getByRole('row', { name: /E2E Cafe Sync Cola/ });
+    await expect(webProductRow).toBeVisible();
+    // Sold once (qty 1) out of the 10 stocked -- read-only, no way to
+    // re-sell it from here, just confirming the same synced number.
+    await expect(webProductRow.getByRole('cell', { name: '9', exact: true })).toBeVisible();
 
-    await webPage.getByRole('button', { name: 'Delete E2E Cross W2D' }).click();
+    await webPage.getByRole('button', { name: 'Orders', exact: true }).click();
+    await expect(webPage.getByRole('cell', { name: '₹60', exact: true })).toBeVisible();
   });
 
-  test('an edit made offline on web queues locally and reaches desktop once back online', async () => {
+  test('a credit session, an expense, and a rate change made on desktop are visible read-only on web', async () => {
     test.setTimeout(60_000);
-    const context = webPage.context();
-    await context.setOffline(true);
-
-    await webPage.getByRole('button', { name: 'Customers' }).click();
-    await webPage.locator('#customer-name').fill('E2E Cross Offline');
-    await webPage.getByRole('button', { name: 'Add customer', exact: true }).click();
-    // Local-first: the write lands in Dexie and renders immediately, with no
-    // network at all.
-    await expect(webPage.getByRole('cell', { name: 'E2E Cross Offline', exact: true })).toBeVisible();
-
-    await context.setOffline(false);
-    // Push the now-queued outbox entry before desktop's next pull.
-    await reloadWebAndWait();
-    await webPage.getByRole('button', { name: 'Customers' }).click();
-    await expect(webPage.getByRole('cell', { name: 'E2E Cross Offline', exact: true })).toBeVisible();
-
-    await desktopPage.bringToFront();
     await navigateTo(desktopPage, 'Customers');
-    await expect(desktopPage.getByRole('cell', { name: 'E2E Cross Offline', exact: true })).toBeVisible({
-      timeout: DESKTOP_SYNC_WAIT,
-    });
+    await desktopPage.locator('#customer-name').fill('E2E Analytics Customer');
+    await desktopPage.getByRole('button', { name: 'Add customer', exact: true }).click();
+    await expect(desktopPage.getByRole('cell', { name: 'E2E Analytics Customer', exact: true })).toBeVisible();
 
-    await desktopPage.getByRole('button', { name: 'Delete E2E Cross Offline' }).click();
-  });
-
-  test('a session amount edited on both clients around the same time converges to one value on both', async () => {
-    test.setTimeout(150_000);
     await navigateTo(desktopPage, 'Daily Sales');
-    const desktopStation = desktopPage.getByTestId('resource-card-8-Ball-Table 1');
-    await desktopStation.getByRole('button', { name: '+ Add session' }).click();
-    const desktopRow = desktopStation.getByTestId('session-row').last();
-    await desktopRow.getByLabel('Amount').fill('111');
-    await desktopRow.getByLabel('Amount').blur();
+    const stationCard = desktopPage.getByTestId('resource-card-8-Ball-Table 1');
+    await stationCard.getByRole('button', { name: '+ Add session' }).click();
+    const sessionRow = stationCard.getByTestId('session-row').last();
+    await sessionRow.getByLabel('Amount').fill('300');
+    await sessionRow.getByLabel('Customer').click();
+    await desktopPage.getByRole('option', { name: 'E2E Analytics Customer' }).click();
+    await expect(sessionRow.getByLabel('Customer')).toContainText('E2E Analytics Customer');
+    await sessionRow.getByLabel('Payment method').click();
+    await desktopPage.getByRole('option', { name: 'Credit' }).click();
+    await expect(sessionRow.getByLabel('Payment method')).toContainText('Credit');
 
-    // Wait for desktop's push, then have web pull it -- both sides need a
-    // shared starting point before they can race to edit the same row.
+    await navigateTo(desktopPage, 'Expenses');
+    await desktopPage.getByRole('button', { name: '+ Add expense' }).click();
+    const expenseRow = desktopPage.getByTestId('expense-row').last();
+    await expenseRow.getByLabel('Description').fill('E2E Analytics Snack');
+    await expenseRow.getByLabel('Amount').fill('50');
+    await expenseRow.getByLabel('Amount').blur();
+
+    await navigateTo(desktopPage, 'Rate Management');
+    const playStationCard = desktopPage.locator('[data-slot="card"]').filter({ hasText: 'PlayStation' });
+    const hourInput = playStationCard.getByLabel('Rate per 60 min');
+    await hourInput.fill('175');
+    await hourInput.blur();
+    await expect(hourInput).toHaveValue('175');
+
     await waitForDesktopSync();
     await reloadWebAndWait();
-    await webPage.getByRole('button', { name: 'Daily Sales' }).click();
-    const webStation = webPage.getByTestId('resource-card-8-Ball-Table 1');
-    const webRow = webStation.getByTestId('session-row').last();
-    await expect(webRow.getByLabel('Amount')).toHaveValue('111', { timeout: 15_000 });
 
-    // Both clients now edit the same session at roughly the same time. Which
-    // edit "wins" depends on which client's push happens to reach the server
-    // last (last write wins, server-timestamped on arrival, per Global
-    // Constraints) -- not something a test should assert a specific side of.
-    // What must hold is convergence: no split-brain, both ends end up
-    // showing the identical final value.
-    await desktopRow.getByLabel('Amount').fill('222');
-    await desktopRow.getByLabel('Amount').blur();
-    await webRow.getByLabel('Amount').fill('333');
-    await webRow.getByLabel('Amount').blur();
+    await navigateTo(webPage, 'Daily Sales');
+    const webStationCard = webPage.getByTestId('resource-card-8-Ball-Table 1');
+    const webSessionRow = webStationCard.getByTestId('session-row').last();
+    await expect(webSessionRow).toContainText('₹300');
+    await expect(webSessionRow).toContainText('Credit');
+    await expect(webSessionRow).toContainText('E2E Analytics Customer');
+    // Read-only: no editable amount/method fields on web anymore.
+    await expect(webSessionRow.getByLabel('Amount')).toHaveCount(0);
 
-    // Desktop's next interval tick pushes 222. Web's reload immediately
-    // after pushes 333 (landing after desktop's, since it happens on
-    // demand) and pulls back whatever is now on the server.
-    await waitForDesktopSync();
-    await reloadWebAndWait();
-    await webPage.getByRole('button', { name: 'Daily Sales' }).click();
-    const webValue = await webStation.getByTestId('session-row').last().getByLabel('Amount').inputValue();
-    expect(['222', '333']).toContain(webValue);
+    await navigateTo(webPage, 'Credit Management');
+    await expect(webPage.getByTestId('balance-E2E Analytics Customer')).toContainText('₹300');
 
-    // Desktop only converges to the same value on its own next pull.
+    await navigateTo(webPage, 'Expenses');
+    await expect(webPage.getByText('E2E Analytics Snack')).toBeVisible();
+    const totalCard = webPage.locator('[data-slot="card"]').filter({ hasText: 'Total expenses' });
+    await expect(totalCard).toContainText('50');
+
+    await navigateTo(webPage, 'Rate Management');
+    const webPlayStationCard = webPage.locator('[data-slot="card"]').filter({ hasText: 'PlayStation' });
+    await expect(webPlayStationCard).toContainText('₹175');
+    // Read-only: no rate input fields on web anymore.
+    await expect(webPlayStationCard.getByRole('spinbutton')).toHaveCount(0);
+
+    // Self-clean + restore the shared PlayStation rate.
     await desktopPage.bringToFront();
-    await expect(async () => {
-      const desktopValue = await desktopStation.getByTestId('session-row').last().getByLabel('Amount').inputValue();
-      expect(desktopValue).toBe(webValue);
-    }).toPass({ timeout: DESKTOP_SYNC_WAIT + 10_000, intervals: [5_000] });
-
-    await desktopStation.getByTestId('session-row').last().getByRole('button', { name: 'Delete session' }).click();
+    await navigateTo(desktopPage, 'Daily Sales');
+    await stationCard.getByTestId('session-row').last().getByRole('button', { name: 'Delete session' }).click();
+    await navigateTo(desktopPage, 'Expenses');
+    await desktopPage.getByTestId('expense-row').last().getByRole('button', { name: 'Delete expense' }).click();
+    await navigateTo(desktopPage, 'Customers');
+    await desktopPage.getByRole('button', { name: 'Delete E2E Analytics Customer' }).click();
+    await navigateTo(desktopPage, 'Rate Management');
+    await hourInput.fill('100');
+    await hourInput.blur();
+    await expect(hourInput).toHaveValue('100');
   });
 });

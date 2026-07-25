@@ -166,6 +166,13 @@ export const commands = {
   getAuthTokens: () => invoke<AuthTokens | null>('get_auth_tokens'),
   clearAuthTokens: () => invoke<void>('clear_auth_tokens'),
 
+  // Who's currently logged in on this device -- every create/update command
+  // reads this to stamp createdBy/updatedBy locally before it's included in
+  // the outbox payload (see commands/current_actor.rs). Kept in sync with
+  // login/logout by AuthContext.
+  setCurrentActor: (userId: string) => invoke<void>('set_current_actor', { userId }),
+  clearCurrentActor: () => invoke<void>('clear_current_actor'),
+
   // Categories/stations -- pull-only for everyone except an admin using the
   // category-management screen (see 'categoryManagement' permission), which
   // is the only place these write commands are called.

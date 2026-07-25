@@ -20,6 +20,7 @@ import CategoryManagementView from './components/views/CategoryManagementView';
 import BackupSettingsView from './components/views/BackupSettingsView';
 import CafeView from './components/views/CafeView';
 import ProductManagementView from './components/views/ProductManagementView';
+import AuditLogView from './components/views/AuditLogView';
 import type { PermissionKey } from '@/lib/shared';
 
 // networkMode defaults to 'online' in TanStack Query, which pauses queries
@@ -107,6 +108,11 @@ function AuthenticatedApp() {
       {view === 'backupRestore' && (
         <PermissionGate permissions={permissions} requires="backupRestore">
           <BackupSettingsView />
+        </PermissionGate>
+      )}
+      {view === 'auditLog' && (
+        <PermissionGate permissions={permissions} requires="auditLog">
+          <AuditLogView />
         </PermissionGate>
       )}
     </AppShell>

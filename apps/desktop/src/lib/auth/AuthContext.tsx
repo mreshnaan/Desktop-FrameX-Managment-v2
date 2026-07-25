@@ -53,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ refreshToken: tokens.refreshToken }),
         });
         setState({ user: result.user, accessToken: result.accessToken });
+        void commands.setCurrentActor(result.user.id);
       } catch (e) {
         if (isGenuinelyInvalidRefreshToken(e)) await commands.clearAuthTokens();
       } finally {
@@ -67,11 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ username, pin }),
     });
     await commands.storeAuthTokens(result.accessToken, result.refreshToken);
+    await commands.setCurrentActor(result.user.id);
     setState({ user: result.user, accessToken: result.accessToken });
   }
 
   function logout() {
     void commands.clearAuthTokens();
+    void commands.clearCurrentActor();
     setState({ user: null, accessToken: null });
   }
 
@@ -87,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ refreshToken: tokens.refreshToken }),
       });
       setState({ user: result.user, accessToken: result.accessToken });
+      void commands.setCurrentActor(result.user.id);
       return result.accessToken;
     } catch (e) {
       // Only a genuinely invalid/expired refresh token warrants a real

@@ -15,6 +15,7 @@ import CreditManagementView from './components/views/CreditManagementView';
 import ExpensesView from './components/views/ExpensesView';
 import RateManagementView from './components/views/RateManagementView';
 import UserManagementView from './components/views/UserManagementView';
+import AuditLogView from './components/views/AuditLogView';
 
 // networkMode defaults to 'online' in TanStack Query, which pauses queries
 // and mutations whenever the browser is offline -- even ones whose queryFn
@@ -69,6 +70,14 @@ function AuthenticatedApp() {
       {view === 'userManagement' &&
         (permissions && hasPermission(permissions, 'userManagement') ? (
           <UserManagementView />
+        ) : (
+          <div className="p-4 text-sm text-muted-foreground">
+            Not authorized to view this page.
+          </div>
+        ))}
+      {view === 'auditLog' &&
+        (permissions && hasPermission(permissions, 'auditLog') ? (
+          <AuditLogView />
         ) : (
           <div className="p-4 text-sm text-muted-foreground">
             Not authorized to view this page.

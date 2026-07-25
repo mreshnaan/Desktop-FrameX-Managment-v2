@@ -12,6 +12,7 @@ import {
   DatabaseBackup,
   Coffee,
   Package,
+  History,
 } from 'lucide-react';
 import { hasPermission, type PermissionKey as ViewKey } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
@@ -54,6 +55,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'categoryManagement', label: 'Categories & Stations', icon: LayoutGrid },
   { key: 'productManagement', label: 'Products & Stock', icon: Package },
   { key: 'backupRestore', label: 'Backup & Restore', icon: DatabaseBackup },
+  { key: 'auditLog', label: 'Activity & Sync Logs', icon: History },
 ];
 
 interface AppSidebarProps {

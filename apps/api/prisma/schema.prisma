@@ -39,9 +39,13 @@ model Role {
   // edit/delete -- matches FrameX's role model. Everything else is a custom
   // role an admin created through the role-management UI.
   isSystem    Boolean          @default(false)
+  createdBy   String?
+  createdByUser User?          @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedBy   String?
+  updatedByUser User?          @relation("RoleUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   createdAt   DateTime         @default(now())
   permissions RolePermission[]
-  users       User[]
+  users       User[]           @relation("UserRole")
 }
 
 model RolePermission {
@@ -54,32 +58,116 @@ model RolePermission {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  username  String   @unique
+  id       String @id @default(uuid())
+  username String @unique
   // PIN-based auth (matches FrameX) replaces the earlier password login for
   // both apps/web and apps/desktop -- bcrypt-hashed, same as passwordHash was.
-  pinHash   String
-  name      String
-  roleId    String
-  role      Role     @relation(fields: [roleId], references: [id])
+  pinHash  String
+  name     String
+  roleId   String
+  role     Role   @relation("UserRole", fields: [roleId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Every createdBy/updatedBy back-reference below exists only so Prisma
+  // can join the other side (e.g. `session.createdByUser.name`) -- none of
+  // these are meant to be traversed from User outward in app code (that's
+  // what ActivityLog is for: a proper chronological "what did this user
+  // do" feed, not a pile of relation arrays).
+  activityLogs         ActivityLog[]
+  syncLogs              SyncLog[]
+  createdRoles          Role[]            @relation("RoleCreatedBy")
+  updatedRoles          Role[]            @relation("RoleUpdatedBy")
+  createdCategories     Category[]        @relation("CategoryCreatedBy")
+  updatedCategories     Category[]        @relation("CategoryUpdatedBy")
+  createdStations       Station[]         @relation("StationCreatedBy")
+  updatedStations       Station[]         @relation("StationUpdatedBy")
+  createdSessions       Session[]         @relation("SessionCreatedBy")
+  updatedSessions       Session[]         @relation("SessionUpdatedBy")
+  createdExpenses       Expense[]         @relation("ExpenseCreatedBy")
+  updatedExpenses       Expense[]         @relation("ExpenseUpdatedBy")
+  createdCustomers      Customer[]        @relation("CustomerCreatedBy")
+  updatedCustomers      Customer[]        @relation("CustomerUpdatedBy")
+  createdCreditEntries  CreditEntry[]     @relation("CreditEntryCreatedBy")
+  createdRates          Rate[]            @relation("RateCreatedBy")
+  updatedRates          Rate[]            @relation("RateUpdatedBy")
+  createdProductCategories ProductCategory[] @relation("ProductCategoryCreatedBy")
+  updatedProductCategories ProductCategory[] @relation("ProductCategoryUpdatedBy")
+  createdProducts       Product[]         @relation("ProductCreatedBy")
+  updatedProducts       Product[]         @relation("ProductUpdatedBy")
+  createdOrders         Order[]           @relation("OrderCreatedBy")
+  createdStockMovements StockMovement[]   @relation("StockMovementCreatedBy")
+}
+
+// A row-level audit trail: one entry per successful create/update/delete
+// applied through sync push (see sync.service.ts's applyPush) or through a
+// direct admin route (user/role management). Never synced to clients --
+// server-only, queried straight from Postgres by the Activity Log screen.
+model ActivityLog {
+  id     String @id @default(uuid())
+  userId String?
+  user   User?  @relation(fields: [userId], references: [id])
+  // Denormalized snapshot of the actor's name at write time, so the log
+  // stays readable even if that user is later renamed (there is no
+  // delete-user path today, but renames already happen via the same
+  // user-management UI).
+  userName  String?
+  action    String
+  tableName String
+  entityId  String
+  summary   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([tableName, entityId])
+}
+
+// One row per push/pull cycle any client (desktop or web) runs against
+// /sync/push or /sync/pull -- the "full sync event history" the Sync Log
+// screen reads from. Same server-only, non-synced nature as ActivityLog.
+model SyncLog {
+  id           String   @id @default(uuid())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id])
+  userName     String?
+  direction    String
+  entryCount   Int
+  failedCount  Int      @default(0)
+  errorSummary String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
 }
 
 model Category {
-  id          String    @id @default(uuid())
-  name        String    @unique
+  id          String @id @default(uuid())
+  name        String @unique
   billingType String
-  stations    Station[]
-  rate        Rate?
+
+  createdBy     String?
+  createdByUser User?   @relation("CategoryCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedBy     String?
+  updatedByUser User?   @relation("CategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  stations Station[]
+  rate     Rate?
 }
 
 model Station {
-  id         String    @id @default(uuid())
+  id         String   @id @default(uuid())
   categoryId String
-  category   Category  @relation(fields: [categoryId], references: [id])
+  category   Category @relation(fields: [categoryId], references: [id])
   name       String
-  sessions   Session[]
+
+  createdBy     String?
+  createdByUser User?   @relation("StationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedBy     String?
+  updatedByUser User?   @relation("StationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  sessions Session[]
 
   @@index([categoryId])
 }
@@ -97,6 +185,11 @@ model Session {
   updatedAt  DateTime  @default(now())
   deletedAt  DateTime?
 
+  createdBy     String?
+  createdByUser User?   @relation("SessionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedBy     String?
+  updatedByUser User?   @relation("SessionUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
   @@index([date])
   @@index([customerId])
   @@index([stationId])
@@ -111,6 +204,11 @@ model Expense {
   updatedAt   DateTime  @default(now())
   deletedAt   DateTime?
 
+  createdBy     String?
+  createdByUser User?   @relation("ExpenseCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedBy     String?
+  updatedByUser User?   @relation("ExpenseUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
   @@index([date])
 }
 
@@ -120,6 +218,11 @@ model Customer {
   phone     String    @default("")
   updatedAt DateTime  @default(now())
   deletedAt DateTime?
+
+  createdBy     String?
+  createdByUser User?   @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedBy     String?
+  updatedByUser User?   @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 }
 
 model CreditEntry {
@@ -129,6 +232,10 @@ model CreditEntry {
   type       CreditType
   amount     Int
   updatedAt  DateTime   @default(now())
+
+  // Append-only ledger -- no update path, so no updatedBy.
+  createdBy     String?
+  createdByUser User?   @relation("CreditEntryCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([customerId])
 }
@@ -141,6 +248,11 @@ model Rate {
   half       Int?
   value      Int?
   updatedAt  DateTime @default(now())
+
+  createdBy     String?
+  createdByUser User?   @relation("RateCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedBy     String?
+  updatedByUser User?   @relation("RateUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 }
 
 // Cafe: a standalone point-of-sale revenue stream (snacks/drinks sold at the
@@ -151,26 +263,38 @@ model Rate {
 // instead. Reporting is intentionally separate from Daily/Monthly Sales
 // (station revenue) -- see CafeView, not DailySalesView.
 model ProductCategory {
-  id       String    @id @default(uuid())
-  name     String    @unique
+  id   String @id @default(uuid())
+  name String @unique
+
+  createdBy     String?
+  createdByUser User?   @relation("ProductCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedBy     String?
+  updatedByUser User?   @relation("ProductCategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
   products Product[]
 }
 
 model Product {
-  id                String            @id @default(uuid())
+  id                String          @id @default(uuid())
   categoryId        String
-  category          ProductCategory   @relation(fields: [categoryId], references: [id])
+  category          ProductCategory @relation(fields: [categoryId], references: [id])
   name              String
   price             Int
   cost              Int?
-  stockQty          Int               @default(0)
-  lowStockThreshold Int               @default(0)
+  stockQty          Int             @default(0)
+  lowStockThreshold Int             @default(0)
   barcode           String?
-  active            Boolean           @default(true)
-  updatedAt         DateTime          @default(now())
+  active            Boolean         @default(true)
+  updatedAt         DateTime        @default(now())
   deletedAt         DateTime?
-  orderItems        OrderItem[]
-  stockMovements    StockMovement[]
+
+  createdBy     String?
+  createdByUser User?   @relation("ProductCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedBy     String?
+  updatedByUser User?   @relation("ProductUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  orderItems     OrderItem[]
+  stockMovements StockMovement[]
 
   @@index([categoryId])
 }
@@ -182,7 +306,12 @@ model Order {
   customerId String?
   updatedAt  DateTime    @default(now())
   deletedAt  DateTime?
-  items      OrderItem[]
+
+  // Append-only (a checked-out order is never edited) -- no updatedBy.
+  createdBy     String?
+  createdByUser User?   @relation("OrderCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  items OrderItem[]
 
   @@index([customerId])
 }
@@ -210,6 +339,10 @@ model StockMovement {
   reason    StockMovementReason
   note      String?
   updatedAt DateTime             @default(now())
+
+  // Append-only ledger -- no updatedBy.
+  createdBy     String?
+  createdByUser User?   @relation("StockMovementCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([productId])
 }

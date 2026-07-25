@@ -16,7 +16,8 @@ export type PermissionKey =
   | 'categoryManagement'
   | 'backupRestore'
   | 'cafe'
-  | 'productManagement';
+  | 'productManagement'
+  | 'auditLog';
 
 export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
   { key: 'dailySales', label: 'Daily Sales' },
@@ -31,6 +32,7 @@ export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
   { key: 'categoryManagement', label: 'Category & Station Management' },
   { key: 'productManagement', label: 'Product & Stock Management' },
   { key: 'backupRestore', label: 'Backup & Restore' },
+  { key: 'auditLog', label: 'Activity & Sync Logs' },
 ];
 
 export function hasPermission(permissions: string[], key: PermissionKey): boolean {

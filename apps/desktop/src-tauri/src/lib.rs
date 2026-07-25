@@ -45,6 +45,8 @@ pub fn run() {
             commands::products::adjust_stock,
             commands::orders::create_order,
             commands::orders::list_all_orders,
+            commands::orders::list_orders_between,
+            commands::orders::list_order_items_between,
             commands::rates::list_rates,
             commands::rates::upsert_rate,
             commands::customers::list_customers,

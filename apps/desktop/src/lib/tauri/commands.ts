@@ -217,6 +217,8 @@ export const commands = {
 
   // Expenses
   listExpensesForDate: (date: string) => invoke<ExpenseRow[]>('list_expenses_for_date', { date }),
+  listExpensesBetween: (startDate: string, endDate: string) =>
+    invoke<ExpenseRow[]>('list_expenses_between', { startDate, endDate }),
   createExpense: (date: string) => invoke<ExpenseRow>('create_expense', { date }),
   updateExpense: (id: string, description?: string, amount?: number, method?: string) =>
     invoke<ExpenseRow>('update_expense', { id, description, amount, method }),
@@ -260,4 +262,8 @@ export const commands = {
   createOrder: (items: CartItemInput[], method: string, customerId: string | null) =>
     invoke<OrderWithItems>('create_order', { items, method, customerId }),
   listAllOrders: () => invoke<OrderRow[]>('list_all_orders'),
+  listOrdersBetween: (startUtc: string, endUtc: string) =>
+    invoke<OrderRow[]>('list_orders_between', { startUtc, endUtc }),
+  listOrderItemsBetween: (startUtc: string, endUtc: string) =>
+    invoke<OrderItemRow[]>('list_order_items_between', { startUtc, endUtc }),
 };

@@ -14,6 +14,9 @@ import {
 import { useSessions } from '@/lib/hooks/useSessions';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useCategories, type CategoryWithStations, type CategoryStation } from '@/lib/hooks/useCategories';
+import { useOrdersBetween, orderTimeOf } from '@/lib/hooks/useOrders';
+import { useProducts } from '@/lib/hooks/useProducts';
+import type { OrderRow, OrderItemRow } from '@/lib/tauri/commands';
 import DateStepper from '@/components/layout/DateStepper';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -48,6 +51,24 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
   const { sessions, isLoading, addSession, updateSession, deleteSession } = useSessions(date);
   const { customers } = useCustomers();
   const { categories } = useCategories();
+  const { orders: dayOrders, orderItems } = useOrdersBetween(date, date);
+  const { products } = useProducts();
+
+  const cafe = useMemo(() => {
+    const costByProductId = new Map(products.map(p => [p.id, p.cost ?? 0]));
+    const dayOrderIds = new Set(dayOrders.map(o => o.id));
+    const byMethod: Summary = { total: 0, Cash: 0, Card: 0, Credit: 0 };
+    for (const o of dayOrders) {
+      byMethod.total += o.total;
+      byMethod[o.method] += o.total;
+    }
+    let profit = 0;
+    for (const item of orderItems) {
+      if (!dayOrderIds.has(item.orderId)) continue;
+      profit += item.lineTotal - (costByProductId.get(item.productId) ?? 0) * item.qty;
+    }
+    return { byMethod, profit };
+  }, [dayOrders, orderItems, products]);
 
   const summary = useMemo<Summary>(() => {
     const totals: Summary = { total: 0, Cash: 0, Card: 0, Credit: 0 };
@@ -55,8 +76,15 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
       totals.total += s.amount;
       totals[s.method] += s.amount;
     }
+    // Cafe sales are business revenue same as table sessions -- fold them
+    // into the one Total/Cash/Card/Credit figure instead of leaving cafe
+    // money invisible from the day's actual total.
+    totals.total += cafe.byMethod.total;
+    totals.Cash += cafe.byMethod.Cash;
+    totals.Card += cafe.byMethod.Card;
+    totals.Credit += cafe.byMethod.Credit;
     return totals;
-  }, [sessions]);
+  }, [sessions, cafe]);
 
   return (
     <div className="flex flex-col gap-6 p-4">
@@ -80,6 +108,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
               deleteSession={deleteSession}
             />
           ))}
+          <CafeSection orders={dayOrders} orderItems={orderItems} revenue={cafe.byMethod.total} profit={cafe.profit} />
         </div>
       )}
     </div>
@@ -204,6 +233,78 @@ function StationCard({
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+// Read-only, like the rest of this view's relationship to cafe orders --
+// a sale is rung up from the Cafe screen, not edited here. Profit needs each
+// sold product's cost (a product with no cost set contributes 0 cost, not an
+// error, since cost is optional -- see ProductManagementView).
+function CafeSection({
+  orders,
+  orderItems,
+  revenue,
+  profit,
+}: {
+  orders: OrderRow[];
+  orderItems: OrderItemRow[];
+  revenue: number;
+  profit: number;
+}) {
+  const [showOrders, setShowOrders] = useState(false);
+  const itemCountByOrder = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of orderItems) counts.set(item.orderId, (counts.get(item.orderId) ?? 0) + item.qty);
+    return counts;
+  }, [orderItems]);
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-lg font-semibold">Cafe</h2>
+      <Card data-testid="cafe-summary-card">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Cafe sales</CardTitle>
+          <div className="flex gap-4 text-sm">
+            <span className="text-muted-foreground">
+              Revenue <span className="font-medium text-foreground">{formatCurrency(revenue)}</span>
+            </span>
+            <span className="text-muted-foreground">
+              Profit <span className="font-medium text-foreground">{formatCurrency(profit)}</span>
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {orders.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No cafe sales yet.</p>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="self-start"
+                aria-expanded={showOrders}
+                onClick={() => setShowOrders(v => !v)}
+              >
+                {showOrders ? 'Hide orders' : 'Show orders'}
+              </Button>
+              {showOrders && (
+                <ul className="flex flex-col gap-1">
+                  {orders.map(o => (
+                    <li key={o.id} className="flex items-center justify-between gap-4 text-sm">
+                      <span className="text-muted-foreground">
+                        {orderTimeOf(o.updatedAt)} — {itemCountByOrder.get(o.id) ?? 0} item(s) — {o.method}
+                      </span>
+                      <span className="font-medium">{formatCurrency(o.total)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </section>
   );
 }
 

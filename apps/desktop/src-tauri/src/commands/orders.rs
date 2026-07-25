@@ -202,6 +202,72 @@ pub async fn list_all_orders(pool: State<'_, SqlitePool>) -> Result<Vec<Order>, 
     do_list_all_orders(pool.inner()).await
 }
 
+// Orders have no separate `date` column like sessions do -- updated_at IS the
+// instant the order belongs to, stamped in UTC (see create_order's comment
+// and now_iso()). Date-range filtering therefore takes UTC instant bounds
+// (start_utc inclusive, end_utc exclusive) rather than a local calendar-date
+// string: the frontend converts its local [startDate, endDate] range into
+// these UTC instants via localDateRangeToUtc() before calling this command,
+// so the comparison is exact regardless of the machine's timezone offset.
+pub(crate) async fn do_list_orders_between(
+    pool: &SqlitePool,
+    start_utc: &str,
+    end_utc: &str,
+) -> Result<Vec<Order>, String> {
+    sqlx::query_as::<_, Order>(
+        "SELECT id, method, total, customer_id, updated_at, deleted_at FROM orders
+         WHERE deleted_at IS NULL AND updated_at >= ? AND updated_at < ?
+         ORDER BY updated_at DESC",
+    )
+    .bind(start_utc)
+    .bind(end_utc)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_orders_between(
+    pool: State<'_, SqlitePool>,
+    start_utc: String,
+    end_utc: String,
+) -> Result<Vec<Order>, String> {
+    do_list_orders_between(pool.inner(), &start_utc, &end_utc).await
+}
+
+// Order items have no deleted_at of their own -- an order is append-only
+// (see do_create_order's comment), so filtering by the parent order's
+// deleted_at is the only soft-delete boundary that applies. Bounded by the
+// same UTC instant range as list_orders_between, via a join on the parent
+// order, rather than shipping every order item ever created to compute a
+// single day's or month's cafe profit.
+pub(crate) async fn do_list_order_items_between(
+    pool: &SqlitePool,
+    start_utc: &str,
+    end_utc: &str,
+) -> Result<Vec<OrderItem>, String> {
+    sqlx::query_as::<_, OrderItem>(
+        "SELECT oi.id, oi.order_id, oi.product_id, oi.qty, oi.unit_price, oi.line_total, oi.updated_at
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+         WHERE o.deleted_at IS NULL AND o.updated_at >= ? AND o.updated_at < ?",
+    )
+    .bind(start_utc)
+    .bind(end_utc)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_order_items_between(
+    pool: State<'_, SqlitePool>,
+    start_utc: String,
+    end_utc: String,
+) -> Result<Vec<OrderItem>, String> {
+    do_list_order_items_between(pool.inner(), &start_utc, &end_utc).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,5 +460,120 @@ mod tests {
 
         assert_eq!(result.order.total, 2 * 50 + 3 * 30);
         assert_eq!(result.items.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn list_orders_between_only_returns_orders_in_the_date_range() {
+        let pool = setup_test_db().await;
+        let product = seed_product(&pool, 10).await;
+
+        let in_range = do_create_order(
+            &pool,
+            vec![CartItemInput { product_id: product.id.clone(), qty: 1 }],
+            "Cash".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE orders SET updated_at = '2026-06-15T10:00:00.000Z' WHERE id = ?")
+            .bind(&in_range.order.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let out_of_range = do_create_order(
+            &pool,
+            vec![CartItemInput { product_id: product.id.clone(), qty: 1 }],
+            "Cash".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE orders SET updated_at = '2026-07-01T10:00:00.000Z' WHERE id = ?")
+            .bind(&out_of_range.order.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let results = do_list_orders_between(&pool, "2026-06-01T00:00:00.000Z", "2026-07-01T00:00:00.000Z")
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, in_range.order.id);
+    }
+
+    // Regression test for the UTC-vs-local timezone bug: an order stamped
+    // just after local midnight in a timezone ahead of UTC (e.g. UTC+5:30 --
+    // local 00:00-05:29 is still "yesterday" in UTC) must still be included
+    // when the frontend converts that local day into its true UTC instant
+    // bounds via localDateRangeToUtc(). Simulates a local date of 2026-06-16
+    // in UTC+5:30, whose UTC start boundary is 2026-06-15T18:30:00.000Z.
+    #[tokio::test]
+    async fn list_orders_between_includes_an_order_stamped_just_after_local_midnight_ahead_of_utc() {
+        let pool = setup_test_db().await;
+        let product = seed_product(&pool, 10).await;
+
+        let just_after_local_midnight = do_create_order(
+            &pool,
+            vec![CartItemInput { product_id: product.id.clone(), qty: 1 }],
+            "Cash".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+        // 2026-06-16T00:15 in UTC+5:30 == 2026-06-15T18:45:00.000Z.
+        sqlx::query("UPDATE orders SET updated_at = '2026-06-15T18:45:00.000Z' WHERE id = ?")
+            .bind(&just_after_local_midnight.order.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // UTC instant bounds for the local day 2026-06-16 in UTC+5:30.
+        let results = do_list_orders_between(&pool, "2026-06-15T18:30:00.000Z", "2026-06-16T18:30:00.000Z")
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, just_after_local_midnight.order.id);
+    }
+
+    #[tokio::test]
+    async fn list_order_items_between_only_returns_items_for_orders_in_range() {
+        let pool = setup_test_db().await;
+        let product = seed_product(&pool, 10).await;
+
+        let in_range = do_create_order(
+            &pool,
+            vec![CartItemInput { product_id: product.id.clone(), qty: 2 }],
+            "Cash".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE orders SET updated_at = '2026-06-15T10:00:00.000Z' WHERE id = ?")
+            .bind(&in_range.order.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let out_of_range = do_create_order(
+            &pool,
+            vec![CartItemInput { product_id: product.id.clone(), qty: 3 }],
+            "Cash".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE orders SET updated_at = '2026-07-01T10:00:00.000Z' WHERE id = ?")
+            .bind(&out_of_range.order.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let results = do_list_order_items_between(&pool, "2026-06-01T00:00:00.000Z", "2026-07-01T00:00:00.000Z")
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].order_id, in_range.order.id);
+        assert_eq!(results[0].qty, 2);
     }
 }

@@ -15,6 +15,8 @@ import {
 } from '@/lib/shared';
 import { commands, type SessionRow } from '@/lib/tauri/commands';
 import { useCategories } from '@/lib/hooks/useCategories';
+import { useOrdersBetween, orderDateOf } from '@/lib/hooks/useOrders';
+import { useProducts } from '@/lib/hooks/useProducts';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -89,6 +91,19 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
     queryKey: ['month-sessions', cursor.year, cursor.month],
     queryFn: () => commands.listSessionsBetween(monthStart, monthEnd),
   });
+  const { orders: monthOrders, orderItems } = useOrdersBetween(monthStart, monthEnd);
+  const { products } = useProducts();
+
+  const cafeProfit = useMemo(() => {
+    const costByProductId = new Map(products.map(p => [p.id, p.cost ?? 0]));
+    const monthOrderIds = new Set(monthOrders.map(o => o.id));
+    let profit = 0;
+    for (const item of orderItems) {
+      if (!monthOrderIds.has(item.orderId)) continue;
+      profit += item.lineTotal - (costByProductId.get(item.productId) ?? 0) * item.qty;
+    }
+    return profit;
+  }, [monthOrders, orderItems, products]);
 
   const rows = useMemo<DayRow[]>(() => {
     const byDate = new Map<string, SessionRow[]>();
@@ -96,6 +111,13 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
       const arr = byDate.get(s.date) ?? [];
       arr.push(s);
       byDate.set(s.date, arr);
+    }
+    const cafeByDate = new Map<string, { Cash: number; Card: number; Credit: number }>();
+    for (const o of monthOrders) {
+      const day = orderDateOf(o.updatedAt);
+      const entry = cafeByDate.get(day) ?? { Cash: 0, Card: 0, Credit: 0 };
+      entry[o.method] += o.total;
+      cafeByDate.set(day, entry);
     }
     return Array.from({ length: daysInMonth }, (_, i) => {
       const date = dateStrOf(new Date(cursor.year, cursor.month, i + 1));
@@ -105,9 +127,19 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
         row[s.method] += s.amount;
         row.total += s.amount;
       }
+      // Cafe sales are business revenue same as table sessions -- fold them
+      // into the same day row instead of leaving cafe money invisible from
+      // the month's actual totals.
+      const dayCafe = cafeByDate.get(date);
+      if (dayCafe) {
+        row.Cash += dayCafe.Cash;
+        row.Card += dayCafe.Card;
+        row.Credit += dayCafe.Credit;
+        row.total += dayCafe.Cash + dayCafe.Card + dayCafe.Credit;
+      }
       return row;
     });
-  }, [sessions, cursor, daysInMonth]);
+  }, [sessions, monthOrders, cursor, daysInMonth]);
 
   const categoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -120,8 +152,9 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
       const categoryName = categoryNameByStationId.get(s.stationId);
       if (categoryName) totals[categoryName] = (totals[categoryName] ?? 0) + s.amount;
     }
+    totals['Cafe'] = monthOrders.reduce((sum, o) => sum + o.total, 0);
     return totals;
-  }, [sessions, categories]);
+  }, [sessions, categories, monthOrders]);
 
   const table = useReactTable({
     data: rows,
@@ -171,6 +204,15 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
             </CardContent>
           </Card>
         ))}
+        <Card>
+          <CardHeader>
+            <CardTitle>Cafe</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-baseline gap-3">
+            <span className="text-2xl font-semibold">{formatCurrency(categoryTotals['Cafe'] ?? 0)}</span>
+            <span className="text-sm text-muted-foreground">profit {formatCurrency(cafeProfit)}</span>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>

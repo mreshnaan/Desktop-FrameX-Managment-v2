@@ -21,14 +21,21 @@ async function main() {
   // it was assigned to still exists. RolePermission rows cascade with it.
   await prisma.user.deleteMany({ where: { username: { startsWith: 'e2e-' } } });
   await prisma.role.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
-  await prisma.expense.deleteMany({ where: { description: { startsWith: 'E2E ' } } });
-  // customerId on Session/CreditEntry is a plain string column, not a Prisma
-  // relation (see schema.prisma) -- filter by id list rather than a nested
+  // Expenses and sessions can both be left with an empty description/no
+  // identifying field at all if a test is interrupted before typing one in
+  // (the row is created blank, then filled in -- a crash mid-test skips the
+  // fill), so an "E2E "-prefix filter can silently miss them. Neither table
+  // has any id-list filter available either (sessions live on the fixed
+  // seeded stations, not E2E-prefixed ones). This DB only ever holds
+  // e2e-generated data, so sweep both unconditionally.
+  await prisma.expense.deleteMany({});
+  await prisma.session.deleteMany({});
+  // customerId on CreditEntry is a plain string column, not a Prisma relation
+  // (see schema.prisma) -- filter by id list rather than a nested
   // `customer: {...}` where, which only works through a declared relation.
   const e2eCustomers = await prisma.customer.findMany({ where: { name: { startsWith: 'E2E ' } } });
   const e2eCustomerIds = e2eCustomers.map((c) => c.id);
   await prisma.creditEntry.deleteMany({ where: { customerId: { in: e2eCustomerIds } } });
-  await prisma.session.deleteMany({ where: { customerId: { in: e2eCustomerIds } } });
   await prisma.customer.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
   // Orders have no name field to match "E2E " against, so this is broader by
   // necessity: every Cash/Card order (no customerId) plus every Credit order
@@ -39,8 +46,6 @@ async function main() {
   await prisma.stockMovement.deleteMany({ where: { productId: { in: e2eProducts.map((p) => p.id) } } });
   await prisma.product.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
   await prisma.productCategory.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
-  const e2eStations = await prisma.station.findMany({ where: { name: { startsWith: 'E2E ' } } });
-  await prisma.session.deleteMany({ where: { stationId: { in: e2eStations.map((s) => s.id) } } });
   await prisma.station.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
   await prisma.category.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
   console.log('e2e cleanup complete');

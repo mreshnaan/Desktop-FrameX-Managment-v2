@@ -27,13 +27,16 @@ test('a custom role with two permissions gates the sidebar down to exactly those
   await page.getByTestId('logout-button').click();
   await login(page, 'e2e-limited', '5678');
 
-  await expect(page.getByRole('button', { name: 'Daily Sales' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Cafe' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Daily Sales', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cafe', exact: true })).toBeVisible();
   for (const label of [
     'Monthly Sales', 'Customers', 'Credit Management', 'Expenses', 'Rate Management',
     'User Management', 'Roles', 'Categories & Stations', 'Products & Stock', 'Backup & Restore',
   ]) {
-    await expect(page.getByRole('button', { name: label })).toHaveCount(0);
+    // exact: true -- an unanchored "Customers" also substring-matches the
+    // disabled "Add customers first" placeholder button that renders inside
+    // every session row once any session exists on any station.
+    await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
   }
 
   await page.getByTestId('logout-button').click();

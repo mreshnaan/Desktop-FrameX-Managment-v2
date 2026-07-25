@@ -29,7 +29,11 @@ async function main() {
   await prisma.creditEntry.deleteMany({ where: { customerId: { in: e2eCustomerIds } } });
   await prisma.session.deleteMany({ where: { customerId: { in: e2eCustomerIds } } });
   await prisma.customer.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
-  await prisma.orderItem.deleteMany({ where: { order: { customerId: null } } });
+  // Orders have no name field to match "E2E " against, so this is broader by
+  // necessity: every Cash/Card order (no customerId) plus every Credit order
+  // tied to an e2e customer. OrderItem has onDelete: Cascade from Order (see
+  // schema.prisma), so this also removes its line items.
+  await prisma.order.deleteMany({ where: { OR: [{ customerId: null }, { customerId: { in: e2eCustomerIds } }] } });
   const e2eProducts = await prisma.product.findMany({ where: { name: { startsWith: 'E2E ' } } });
   await prisma.stockMovement.deleteMany({ where: { productId: { in: e2eProducts.map((p) => p.id) } } });
   await prisma.product.deleteMany({ where: { name: { startsWith: 'E2E ' } } });

@@ -62,7 +62,13 @@ const APPEND_ONLY_TABLES = new Set<OutboxEntry['table']>(['creditEntries', 'orde
 
 async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: Actor): Promise<void> {
   const isDelete = entry.op === 'delete';
-  const stampCreate = actor ? { createdBy: actor.id, updatedBy: actor.id } : {};
+  // Append-only tables (APPEND_ONLY_TABLES) have no updatedBy column --
+  // including it in `create` throws a Prisma "unknown argument" error.
+  const stampCreate = actor
+    ? APPEND_ONLY_TABLES.has(entry.table)
+      ? { createdBy: actor.id }
+      : { createdBy: actor.id, updatedBy: actor.id }
+    : {};
   const stampUpdate = actor ? (APPEND_ONLY_TABLES.has(entry.table) ? {} : { updatedBy: actor.id }) : {};
   // A client's payload may itself carry createdBy/updatedBy (desktop always
   // includes them; see current_actor.rs) -- stripped here so they can never

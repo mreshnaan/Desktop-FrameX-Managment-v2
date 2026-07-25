@@ -178,6 +178,22 @@ describe('applyPush', () => {
     });
   });
 
+  it('stamps only createdBy (never updatedBy) on an append-only table -- that column does not exist on it', async () => {
+    // orders/orderItems/creditEntries/stockMovements have no updatedBy column
+    // (see schema.prisma) -- including it in `create` throws a Prisma
+    // "unknown argument" error.
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({ id: 'u1', name: 'Owner' } as any);
+
+    await applyPush(
+      [{ table: 'stockMovements', op: 'upsert', id: 'sm1', payload: { productId: 'p1', delta: -2, reason: 'sale' }, clientUpdatedAt: new Date().toISOString() }],
+      'u1',
+    );
+
+    const call = vi.mocked(prisma.stockMovement.upsert).mock.calls[0][0] as any;
+    expect(call.create).toMatchObject({ createdBy: 'u1' });
+    expect(call.create).not.toHaveProperty('updatedBy');
+  });
+
   it('logs an update (not a create) when the row already exists', async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({ id: 'u1', name: 'Owner' } as any);
     vi.mocked(prisma.customer.findUnique).mockResolvedValueOnce({ id: 'c1' } as any);

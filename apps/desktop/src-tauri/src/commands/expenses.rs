@@ -1,6 +1,5 @@
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::Expense;
-use chrono::Utc;
 use serde_json::json;
 use sqlx::SqlitePool;
 use tauri::State;
@@ -36,7 +35,7 @@ pub(crate) async fn do_create_expense(pool: &SqlitePool, date: String) -> Result
         description: String::new(),
         amount: 0,
         method: "Cash".to_string(),
-        updated_at: Utc::now().to_rfc3339(),
+        updated_at: crate::time::now_iso(),
         deleted_at: None,
     };
 
@@ -86,7 +85,7 @@ pub(crate) async fn do_update_expense(
     if let Some(v) = description { existing.description = v; }
     if let Some(v) = amount { existing.amount = v; }
     if let Some(v) = method { existing.method = v; }
-    existing.updated_at = Utc::now().to_rfc3339();
+    existing.updated_at = crate::time::now_iso();
 
     sqlx::query("UPDATE expenses SET description = ?, amount = ?, method = ?, updated_at = ? WHERE id = ?")
         .bind(&existing.description)
@@ -118,7 +117,7 @@ pub async fn update_expense(
 }
 
 pub(crate) async fn do_delete_expense(pool: &SqlitePool, id: String) -> Result<(), String> {
-    let now = Utc::now().to_rfc3339();
+    let now = crate::time::now_iso();
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let result = sqlx::query("UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ?")

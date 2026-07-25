@@ -1,6 +1,5 @@
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::{Product, StockMovement};
-use chrono::Utc;
 use serde_json::json;
 use sqlx::SqlitePool;
 use tauri::State;
@@ -53,7 +52,7 @@ pub(crate) async fn do_create_product(
         low_stock_threshold,
         barcode,
         active: true,
-        updated_at: Utc::now().to_rfc3339(),
+        updated_at: crate::time::now_iso(),
         deleted_at: None,
     };
 
@@ -121,7 +120,7 @@ pub(crate) async fn do_update_product(
 
     let product = Product {
         name, price, cost, low_stock_threshold, barcode, active,
-        updated_at: Utc::now().to_rfc3339(),
+        updated_at: crate::time::now_iso(),
         ..existing
     };
 
@@ -194,7 +193,7 @@ pub(crate) async fn do_adjust_stock(
         ));
     }
 
-    let product = Product { stock_qty: new_stock_qty, updated_at: Utc::now().to_rfc3339(), ..existing };
+    let product = Product { stock_qty: new_stock_qty, updated_at: crate::time::now_iso(), ..existing };
 
     sqlx::query("UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?")
         .bind(product.stock_qty)

@@ -1,6 +1,5 @@
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::CreditEntry;
-use chrono::Utc;
 use serde_json::json;
 use sqlx::SqlitePool;
 use tauri::State;
@@ -31,7 +30,7 @@ pub(crate) async fn do_create_credit_entry(
         date,
         entry_type,
         amount,
-        updated_at: Utc::now().to_rfc3339(),
+        updated_at: crate::time::now_iso(),
     };
 
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;

@@ -1,6 +1,5 @@
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::Rate;
-use chrono::Utc;
 use serde_json::json;
 use sqlx::SqlitePool;
 use tauri::State;
@@ -39,7 +38,7 @@ pub(crate) async fn do_upsert_rate(
         hour_rate,
         half_rate,
         frame_rate,
-        updated_at: Utc::now().to_rfc3339(),
+        updated_at: crate::time::now_iso(),
     };
 
     sqlx::query(

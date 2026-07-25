@@ -3,6 +3,7 @@ mod commands;
 mod db;
 mod models;
 mod money;
+mod time;
 
 use tauri::Manager;
 

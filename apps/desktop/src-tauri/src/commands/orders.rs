@@ -1,7 +1,6 @@
 use crate::commands::products::payload as product_payload;
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::{Order, OrderItem, OrderWithItems, Product};
-use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -38,7 +37,7 @@ pub(crate) async fn do_create_order(
     }
 
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-    let now = Utc::now().to_rfc3339();
+    let now = crate::time::now_iso();
     let order_id = Uuid::new_v4().to_string();
 
     // Pass 1: validate every line and fetch the products, without writing

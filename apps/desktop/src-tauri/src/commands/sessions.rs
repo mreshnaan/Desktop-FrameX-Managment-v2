@@ -1,7 +1,6 @@
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::Session;
 use crate::money::{calc_frame_amount, calc_time_amount};
-use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -104,7 +103,7 @@ pub(crate) async fn do_create_session(
         amount,
         method: "Cash".to_string(),
         customer_id: None,
-        updated_at: Utc::now().to_rfc3339(),
+        updated_at: crate::time::now_iso(),
         deleted_at: None,
     };
 
@@ -197,7 +196,7 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
             }
         }
     }
-    existing.updated_at = Utc::now().to_rfc3339();
+    existing.updated_at = crate::time::now_iso();
 
     sqlx::query(
         "UPDATE sessions SET start = ?, \"end\" = ?, amount = ?, method = ?, customer_id = ?, updated_at = ? WHERE id = ?",
@@ -227,7 +226,7 @@ pub async fn update_session(pool: State<'_, SqlitePool>, id: String, patch: Sess
 }
 
 pub(crate) async fn do_delete_session(pool: &SqlitePool, id: String) -> Result<(), String> {
-    let now = Utc::now().to_rfc3339();
+    let now = crate::time::now_iso();
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let result = sqlx::query("UPDATE sessions SET deleted_at = ?, updated_at = ? WHERE id = ?")

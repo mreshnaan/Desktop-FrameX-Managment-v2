@@ -1,6 +1,5 @@
 use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::Customer;
-use chrono::Utc;
 use serde_json::json;
 use sqlx::SqlitePool;
 use tauri::State;
@@ -25,7 +24,7 @@ pub(crate) async fn do_create_customer(pool: &SqlitePool, name: String, phone: S
         id: Uuid::new_v4().to_string(),
         name,
         phone,
-        updated_at: Utc::now().to_rfc3339(),
+        updated_at: crate::time::now_iso(),
         deleted_at: None,
     };
 
@@ -57,7 +56,7 @@ pub async fn create_customer(pool: State<'_, SqlitePool>, name: String, phone: S
 }
 
 pub(crate) async fn do_delete_customer(pool: &SqlitePool, id: String) -> Result<(), String> {
-    let now = Utc::now().to_rfc3339();
+    let now = crate::time::now_iso();
 
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let result = sqlx::query("UPDATE customers SET deleted_at = ?, updated_at = ? WHERE id = ?")

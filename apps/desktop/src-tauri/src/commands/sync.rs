@@ -1,4 +1,3 @@
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{Sqlite, SqlitePool, Transaction};
@@ -23,7 +22,7 @@ pub async fn enqueue_outbox_tx(
     .bind(op)
     .bind(entity_id)
     .bind(payload.to_string())
-    .bind(Utc::now().to_rfc3339())
+    .bind(crate::time::now_iso())
     .execute(&mut **tx)
     .await?;
     Ok(())

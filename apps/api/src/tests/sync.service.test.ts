@@ -1,21 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { applyPush } from '../services/sync.service';
+import { applyPush, pullSince } from '../services/sync.service';
 import { prisma } from '../db';
 
 vi.mock('../db', () => {
+  // "doesn't exist yet" by default -> every entry logs as a create unless a
+  // test overrides its own table's findUnique for that one call.
+  const table = () => ({ upsert: vi.fn(), findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) });
   const mockPrisma: any = {
-    session: { upsert: vi.fn() },
-    expense: { upsert: vi.fn() },
-    customer: { upsert: vi.fn() },
-    creditEntry: { upsert: vi.fn() },
-    rate: { upsert: vi.fn() },
-    category: { upsert: vi.fn() },
-    station: { upsert: vi.fn() },
-    productCategory: { upsert: vi.fn() },
-    product: { upsert: vi.fn() },
-    order: { upsert: vi.fn() },
-    orderItem: { upsert: vi.fn() },
-    stockMovement: { upsert: vi.fn() },
+    session: table(),
+    expense: table(),
+    customer: table(),
+    creditEntry: table(),
+    rate: table(),
+    category: table(),
+    station: table(),
+    productCategory: table(),
+    product: table(),
+    order: table(),
+    orderItem: table(),
+    stockMovement: table(),
+    user: { findUnique: vi.fn().mockResolvedValue(null) },
+    activityLog: { create: vi.fn() },
+    syncLog: { create: vi.fn() },
   };
   // Real Prisma interactive transactions run the callback against a tx client;
   // for these unit tests the tx client is just the same mocked prisma object,
@@ -134,6 +140,94 @@ describe('applyPush', () => {
     expect(prisma.stockMovement.upsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'sm1' },
       create: expect.objectContaining({ id: 'sm1', productId: 'p1', delta: -2 }),
+    }));
+  });
+
+  it('always writes exactly one SyncLog row per push call, regardless of entry count', async () => {
+    await applyPush([
+      { table: 'customers', op: 'upsert', id: 'c1', payload: { id: 'c1', name: 'Ravi', phone: '' }, clientUpdatedAt: new Date().toISOString() },
+      { table: 'customers', op: 'upsert', id: 'c2', payload: { id: 'c2', name: 'Meera', phone: '' }, clientUpdatedAt: new Date().toISOString() },
+    ]);
+    expect(prisma.syncLog.create).toHaveBeenCalledTimes(1);
+    expect(prisma.syncLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ direction: 'push', entryCount: 2, failedCount: 0 }),
+    }));
+  });
+
+  it('stamps createdBy/updatedBy and writes an ActivityLog entry when an actor is provided', async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({ id: 'u1', name: 'Owner' } as any);
+
+    await applyPush(
+      [{ table: 'customers', op: 'upsert', id: 'c1', payload: { id: 'c1', name: 'Ravi', phone: '' }, clientUpdatedAt: new Date().toISOString() }],
+      'u1',
+    );
+
+    expect(prisma.customer.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ createdBy: 'u1', updatedBy: 'u1' }),
+      update: expect.objectContaining({ updatedBy: 'u1' }),
+    }));
+    expect(prisma.activityLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'u1',
+        userName: 'Owner',
+        action: 'create',
+        tableName: 'customers',
+        entityId: 'c1',
+        summary: expect.stringContaining('Created'),
+      }),
+    });
+  });
+
+  it('logs an update (not a create) when the row already exists', async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({ id: 'u1', name: 'Owner' } as any);
+    vi.mocked(prisma.customer.findUnique).mockResolvedValueOnce({ id: 'c1' } as any);
+
+    await applyPush(
+      [{ table: 'customers', op: 'upsert', id: 'c1', payload: { id: 'c1', name: 'Ravi', phone: '' }, clientUpdatedAt: new Date().toISOString() }],
+      'u1',
+    );
+
+    expect(prisma.activityLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: 'update', summary: expect.stringContaining('Updated') }),
+    });
+  });
+
+  it('never trusts a createdBy/updatedBy the client put in its own payload -- only the server-resolved actor', async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({ id: 'real-actor', name: 'Owner' } as any);
+    vi.mocked(prisma.customer.findUnique).mockResolvedValueOnce({ id: 'c1' } as any); // pre-existing -> update path
+
+    await applyPush(
+      [{
+        table: 'customers', op: 'upsert', id: 'c1',
+        payload: { id: 'c1', name: 'Ravi', phone: '', createdBy: 'spoofed', updatedBy: 'spoofed' },
+        clientUpdatedAt: new Date().toISOString(),
+      }],
+      'real-actor',
+    );
+
+    const call = (prisma.customer.upsert as any).mock.calls[0][0];
+    expect(call.update.updatedBy).toBe('real-actor');
+    expect(call.update.createdBy).toBeUndefined();
+  });
+
+  it('does not write createdBy/updatedBy or an ActivityLog entry when no actor is given', async () => {
+    await applyPush([
+      { table: 'customers', op: 'upsert', id: 'c1', payload: { id: 'c1', name: 'Ravi', phone: '' }, clientUpdatedAt: new Date().toISOString() },
+    ]);
+    const call = (prisma.customer.upsert as any).mock.calls[0][0];
+    expect(call.create.createdBy).toBeUndefined();
+    expect(prisma.activityLog.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('pullSince', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('writes one SyncLog row summing the total rows returned across every table', async () => {
+    vi.mocked(prisma.customer.findMany).mockResolvedValueOnce([{ id: 'c1' }, { id: 'c2' }] as any);
+    await pullSince(undefined, undefined);
+    expect(prisma.syncLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ direction: 'pull', entryCount: 2 }),
     }));
   });
 });

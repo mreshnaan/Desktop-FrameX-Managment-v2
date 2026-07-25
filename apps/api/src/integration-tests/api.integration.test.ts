@@ -37,7 +37,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  const user = await prisma.user.findUnique({ where: { username: USERNAME } });
   if (customerId) await prisma.customer.deleteMany({ where: { id: customerId } });
+  if (user) {
+    await prisma.activityLog.deleteMany({ where: { userId: user.id } });
+    await prisma.syncLog.deleteMany({ where: { userId: user.id } });
+  }
   await prisma.user.deleteMany({ where: { username: USERNAME } });
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
@@ -119,6 +124,28 @@ describe('authenticated routes', () => {
     const body = await json<{ customers: unknown[] }>(pullRes);
     expect(body.customers).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: customerId, name: 'E2E Integration Customer' })]),
+    );
+  });
+
+  it('the push above is attributed to the pushing user in Activity Log and Sync Log', async () => {
+    const activityRes = await fetch(`${baseUrl}/activity-logs?pageSize=50`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(activityRes.status).toBe(200);
+    const activityBody = await json<{ entries: { tableName: string; entityId: string; action: string; userName: string }[] }>(activityRes);
+    expect(activityBody.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tableName: 'customers', entityId: customerId, action: 'create', userName: 'E2E Integration' }),
+      ]),
+    );
+
+    const syncRes = await fetch(`${baseUrl}/sync-logs?pageSize=50`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(syncRes.status).toBe(200);
+    const syncBody = await json<{ entries: { direction: string; userName: string }[] }>(syncRes);
+    expect(syncBody.entries).toEqual(
+      expect.arrayContaining([expect.objectContaining({ direction: 'push', userName: 'E2E Integration' })]),
     );
   });
 });

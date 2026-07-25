@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { SyncPullQuerySchema, SyncPushSchema } from '../shared/index';
-import { authenticate } from '../middleware/auth';
+import { authenticate, type AuthedRequest } from '../middleware/auth';
 import { applyPush, pullSince } from '../services/sync.service';
 
 export const syncRouter = Router();
 syncRouter.use(authenticate);
 
-syncRouter.post('/push', async (req, res) => {
+syncRouter.post('/push', async (req: AuthedRequest, res) => {
   const parsed = SyncPushSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -20,15 +20,15 @@ syncRouter.post('/push', async (req, res) => {
   // whole push failed, retry everything". Consuming this per-entry failure list
   // on the client (apps/web's syncEngine.ts) is intentionally left as a
   // follow-up; today it still treats any non-empty response as full success.
-  const { failed } = await applyPush(parsed.data.entries);
+  const { failed } = await applyPush(parsed.data.entries, req.user?.sub);
   res.json({ ok: true, failed });
 });
 
-syncRouter.get('/pull', async (req, res) => {
+syncRouter.get('/pull', async (req: AuthedRequest, res) => {
   const parsed = SyncPullQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  res.json(await pullSince(parsed.data.since));
+  res.json(await pullSince(parsed.data.since, req.user?.sub));
 });

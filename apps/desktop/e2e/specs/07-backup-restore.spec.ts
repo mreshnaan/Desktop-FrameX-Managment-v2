@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { connectToApp, login, navigateTo } from '../helpers';
 
-// Runs last (see the 06- prefix / playwright.config.ts's serial workers):
+// Runs last (see the 07- prefix / playwright.config.ts's serial workers):
 // restore_backup closes the app's SQLite connection pool as part of
 // swapping the database file, so the app is intentionally left unusable
 // until a real restart -- nothing after this spec should assume the app is

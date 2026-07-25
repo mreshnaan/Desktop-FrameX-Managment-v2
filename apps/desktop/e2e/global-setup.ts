@@ -8,8 +8,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../../..');
 const API_DIR = path.join(REPO_ROOT, 'apps/api');
 const DESKTOP_DIR = path.join(REPO_ROOT, 'apps/desktop');
+const WEB_DIR = path.join(REPO_ROOT, 'apps/web');
 const CDP_PORT = 9222;
 const API_PORT = 4000;
+const WEB_PORT = 5173;
 
 dotenv.config({ path: path.join(API_DIR, '.env'), quiet: true });
 
@@ -99,8 +101,21 @@ export default async function globalSetup() {
 
   await waitFor(`http://localhost:${CDP_PORT}/json/version`, 20_000, 'the desktop app (CDP)');
 
+  // 5. Also start apps/web's dev server -- only the cross-app-sync spec
+  // needs it (to drive a real second client against the same api), but it's
+  // cheap to keep running for the whole suite rather than scoping it to one
+  // spec file.
+  const webProcess: ChildProcess = spawn('pnpm', ['dev'], {
+    cwd: WEB_DIR,
+    env: { ...process.env, PORT: String(WEB_PORT) },
+    stdio: 'inherit',
+    shell: true,
+  });
+  await waitFor(`http://localhost:${WEB_PORT}`, 20_000, 'apps/web dev server');
+
   return async function globalTeardown() {
     killTree(appProcess.pid);
+    killTree(webProcess.pid);
     killTree(apiProcess.pid);
     try {
       execFileSync(

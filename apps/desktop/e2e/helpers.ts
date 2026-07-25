@@ -1,6 +1,7 @@
-import { chromium, type Page } from '@playwright/test';
+import { chromium, type Browser, type Page } from '@playwright/test';
 
 const CDP_URL = 'http://localhost:9222';
+const WEB_URL = 'http://localhost:5173';
 
 export const E2E_USERNAME = 'e2e-owner';
 export const E2E_PIN = '1234';
@@ -36,6 +37,27 @@ export async function login(page: Page, username = E2E_USERNAME, pin = E2E_PIN):
   await page.locator('#login-username').fill(username);
   await page.locator('#login-pin').fill(pin);
   await page.getByRole('button', { name: 'Sign in' }).click();
+}
+
+// A plain browser instance (not CDP) pointed at apps/web's dev server
+// (started by global-setup.ts alongside the desktop binary) -- used only by
+// the cross-app-sync spec to prove data written on one client reaches the
+// other through the real api, not just within a single app's own suite.
+export async function connectToWeb(): Promise<{ browser: Browser; page: Page }> {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.goto(WEB_URL);
+  return { browser, page };
+}
+
+export async function loginWeb(page: Page, username = E2E_USERNAME, pin = E2E_PIN): Promise<void> {
+  await page.locator('#login-username').fill(username);
+  await page.locator('#login-pin').fill(pin);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  // Unlike desktop's login(), this one is awaited before the caller does
+  // anything else -- a silent login failure here would otherwise surface as
+  // a confusing timeout several steps later instead of at its real source.
+  await page.getByRole('button', { name: 'Daily Sales' }).waitFor({ state: 'visible', timeout: 15_000 });
 }
 
 // The sidebar renders each nav item as a <button> (SidebarMenuButton with an

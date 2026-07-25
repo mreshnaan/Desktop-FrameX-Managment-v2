@@ -36,6 +36,12 @@ export default function CreditManagementView() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      {customers.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          Balances include Credit-paid table sessions automatically. Use the fields below only for
+          credit given or paid outside the daily sheet.
+        </p>
+      )}
       {customers.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No customers yet. Add a customer on the Customers view to start tracking credit.

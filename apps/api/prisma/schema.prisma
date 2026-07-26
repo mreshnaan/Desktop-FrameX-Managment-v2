@@ -184,6 +184,7 @@ model Session {
   customerId String?
   updatedAt  DateTime  @default(now())
   deletedAt  DateTime?
+  metadata   Json?
 
   createdBy     String?
   createdByUser User?   @relation("SessionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -327,6 +328,7 @@ model OrderItem {
   unitPrice Int
   lineTotal Int
   updatedAt DateTime @default(now())
+  metadata  Json?
 
   @@index([orderId])
   @@index([productId])

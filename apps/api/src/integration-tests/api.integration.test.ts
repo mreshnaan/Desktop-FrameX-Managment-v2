@@ -317,6 +317,32 @@ describe('authenticated routes', () => {
     await prisma.session.deleteMany({ where: { id: sessionId } });
   });
 
+  it('a pushed session metadata payload round-trips into the Session row', async () => {
+    const station = await prisma.station.findFirstOrThrow({ where: { name: 'Table 1' } });
+    const sessionId = crypto.randomUUID();
+
+    await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [{
+          table: 'sessions', op: 'upsert', id: sessionId,
+          payload: {
+            id: sessionId, stationId: station.id, date: '2026-07-01', start: '09:00', end: '10:30',
+            amount: 300, method: 'Cash', customerId: null,
+            metadata: { billingType: 'time', hourRate: 200, halfRate: 100 },
+          },
+          clientUpdatedAt: new Date().toISOString(),
+        }],
+      }),
+    });
+
+    const row = await prisma.session.findUniqueOrThrow({ where: { id: sessionId } });
+    expect(row.metadata).toEqual({ billingType: 'time', hourRate: 200, halfRate: 100 });
+
+    await prisma.session.deleteMany({ where: { id: sessionId } });
+  });
+
   // -------------------------------------------------------------------------
   // GET /expenses
   // -------------------------------------------------------------------------

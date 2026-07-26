@@ -1,35 +1,34 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../tauri/commands';
 import type { Expense } from '../shared/schemas/expense.schema';
-import { useInvalidateAfter } from './useInvalidateAfter';
 
 export function useExpenses(date: string) {
+  const qc = useQueryClient();
   const key = ['expenses', date];
-  // Broader than `key` alone: a backdated expense lands on a different day's
-  // cache than the one currently being viewed, so addExpense invalidates
-  // every cached expenses-day query instead of just this one.
-  const invalidateAllDays = useInvalidateAfter([['expenses']]);
-  const invalidateThisDay = useInvalidateAfter([key]);
 
   const query = useQuery({
     queryKey: key,
     queryFn: () => commands.listExpensesForDate(date),
   });
 
-  // Defaults to the day currently being viewed, but a cashier recording a
-  // receipt from an earlier day doesn't have to navigate away first --
-  // create_expense already took a date param, it was just never exposed.
-  async function addExpense(customDate?: string) {
-    await invalidateAllDays(() => commands.createExpense(customDate ?? date));
-  }
+  // Broader than `key` alone: a backdated expense lands on a different day's
+  // cache than the one currently being viewed, so addExpense invalidates
+  // every cached expenses-day query instead of just this one.
+  const addExpense = useMutation({
+    mutationFn: (customDate?: string) => commands.createExpense(customDate ?? date),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['expenses'] }),
+  });
 
-  async function updateExpense(id: string, patch: Partial<Expense>) {
-    await invalidateThisDay(() => commands.updateExpense(id, patch.description, patch.amount, patch.method));
-  }
+  const updateExpense = useMutation({
+    mutationFn: (input: { id: string; patch: Partial<Expense> }) =>
+      commands.updateExpense(input.id, input.patch.description, input.patch.amount, input.patch.method),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
 
-  async function deleteExpense(id: string) {
-    await invalidateThisDay(() => commands.deleteExpense(id));
-  }
+  const deleteExpense = useMutation({
+    mutationFn: (id: string) => commands.deleteExpense(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
 
   return { expenses: query.data ?? [], addExpense, updateExpense, deleteExpense };
 }

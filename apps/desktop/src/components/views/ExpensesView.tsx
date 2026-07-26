@@ -32,7 +32,7 @@ export default function ExpensesView({ date, onDateChange }: ExpensesViewProps) 
   const total = useMemo(() => expenses.reduce((sum, e) => sum + e.amount, 0), [expenses]);
 
   async function handleAddExpense() {
-    await addExpense(backdateTo || undefined);
+    await addExpense.mutateAsync(backdateTo || undefined);
     setBackdateTo('');
   }
 
@@ -59,8 +59,8 @@ export default function ExpensesView({ date, onDateChange }: ExpensesViewProps) 
             <ExpenseRow
               key={expense.id}
               expense={expense}
-              updateExpense={updateExpense}
-              deleteExpense={deleteExpense}
+              updateExpense={(id, patch) => updateExpense.mutateAsync({ id, patch }).then(() => undefined)}
+              deleteExpense={id => deleteExpense.mutateAsync(id).then(() => undefined)}
             />
           ))}
           <div className="flex items-center gap-2">

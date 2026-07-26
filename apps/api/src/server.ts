@@ -6,6 +6,7 @@ import { usersRouter } from './routes/users.routes';
 import { rolesRouter } from './routes/roles.routes';
 import { syncRouter } from './routes/sync.routes';
 import { reportsRouter } from './routes/reports.routes';
+import { sessionsRouter } from './routes/sessions.routes';
 import { logsRouter } from './routes/logs.routes';
 
 export const app = express();
@@ -17,6 +18,7 @@ app.use('/users', usersRouter);
 app.use('/roles', rolesRouter);
 app.use('/sync', syncRouter);
 app.use('/reports', reportsRouter);
+app.use('/sessions', sessionsRouter);
 app.use('/', logsRouter);
 
 if (process.env.NODE_ENV !== 'test') {

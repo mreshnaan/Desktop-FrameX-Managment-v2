@@ -245,4 +245,49 @@ describe('authenticated routes', () => {
     // Cleanup
     await prisma.creditEntry.deleteMany({ where: { id: { in: [id1, id2] } } });
   });
+
+  // -------------------------------------------------------------------------
+  // GET /sessions
+  // -------------------------------------------------------------------------
+  it('GET /sessions returns only sessions for the requested date', async () => {
+    const station = await prisma.station.findFirstOrThrow({ where: { name: 'Table 1' } });
+    const inRangeId = crypto.randomUUID();
+    const outOfRangeId = crypto.randomUUID();
+
+    await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [
+          {
+            table: 'sessions', op: 'upsert', id: inRangeId,
+            payload: { id: inRangeId, stationId: station.id, date: '2026-07-01', start: '10:00', end: '11:00', amount: 250, method: 'Cash', customerId: null },
+            clientUpdatedAt: new Date().toISOString(),
+          },
+          {
+            table: 'sessions', op: 'upsert', id: outOfRangeId,
+            payload: { id: outOfRangeId, stationId: station.id, date: '2026-07-02', start: '10:00', end: '11:00', amount: 300, method: 'Cash', customerId: null },
+            clientUpdatedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    });
+
+    const res = await fetch(`${baseUrl}/sessions?date=2026-07-01`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.status).toBe(200);
+    const sessions = await json<{ id: string; date: string }[]>(res);
+    expect(sessions.some(s => s.id === inRangeId)).toBe(true);
+    expect(sessions.some(s => s.id === outOfRangeId)).toBe(false);
+
+    await prisma.session.deleteMany({ where: { id: { in: [inRangeId, outOfRangeId] } } });
+  });
+
+  it('GET /sessions returns 400 when date is missing', async () => {
+    const res = await fetch(`${baseUrl}/sessions`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.status).toBe(400);
+  });
 });

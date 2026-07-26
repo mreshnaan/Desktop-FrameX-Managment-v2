@@ -111,21 +111,21 @@ async fn apply_one(
     table: &str,
     row: &Value,
 ) -> Result<(), sqlx::Error> {
-    let id = row["id"].as_str().unwrap_or_default().to_string();
+    let id = row["id"].as_str().unwrap_or_default();
 
     match table {
-        "categories" => apply_categories(tx, &id, row).await,
-        "stations" => apply_stations(tx, &id, row).await,
-        "rates" => apply_rates(tx, &id, row).await,
-        "customers" => apply_customers(tx, &id, row).await,
-        "sessions" => apply_sessions(tx, &id, row).await,
-        "expenses" => apply_expenses(tx, &id, row).await,
-        "creditEntries" => apply_credit_entries(tx, &id, row).await,
-        "productCategories" => apply_product_categories(tx, &id, row).await,
-        "products" => apply_products(tx, &id, row).await,
-        "orders" => apply_orders(tx, &id, row).await,
-        "orderItems" => apply_order_items(tx, &id, row).await,
-        "stockMovements" => apply_stock_movements(tx, &id, row).await,
+        "categories" => apply_categories(tx, id, row).await,
+        "stations" => apply_stations(tx, id, row).await,
+        "rates" => apply_rates(tx, id, row).await,
+        "customers" => apply_customers(tx, id, row).await,
+        "sessions" => apply_sessions(tx, id, row).await,
+        "expenses" => apply_expenses(tx, id, row).await,
+        "creditEntries" => apply_credit_entries(tx, id, row).await,
+        "productCategories" => apply_product_categories(tx, id, row).await,
+        "products" => apply_products(tx, id, row).await,
+        "orders" => apply_orders(tx, id, row).await,
+        "orderItems" => apply_order_items(tx, id, row).await,
+        "stockMovements" => apply_stock_movements(tx, id, row).await,
         _ => Ok(()),
     }
 }

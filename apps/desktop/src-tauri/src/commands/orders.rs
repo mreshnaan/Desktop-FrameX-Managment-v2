@@ -15,6 +15,7 @@ pub struct CartItemInput {
     pub qty: i64,
 }
 
+/// Returns one (product, qty, line_total) triple per cart line; performs no writes.
 async fn validate_cart(
     tx: &mut Transaction<'_, Sqlite>,
     items: &[CartItemInput],

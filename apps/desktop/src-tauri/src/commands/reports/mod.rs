@@ -2,6 +2,8 @@ mod credit_history;
 mod customer_balances;
 mod sales;
 
+// #[tauri::command] lives here, not per-domain -- a `pub use` re-export
+// can't carry the macro's companion item along.
 use credit_history::CustomerHistoryRow;
 use sales::MonthlyReportResult;
 use sqlx::SqlitePool;

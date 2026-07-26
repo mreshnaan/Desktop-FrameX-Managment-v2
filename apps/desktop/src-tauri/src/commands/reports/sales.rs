@@ -84,7 +84,7 @@ pub(crate) async fn do_get_monthly_report(
             ) AS INTEGER) as profit
          FROM orders o
          LEFT JOIN (
-             SELECT
+             SELECT 
                  oi.order_id,
                  SUM(oi.line_total) as items_total,
                  SUM(COALESCE(p.cost, 0) * oi.qty) as items_cost

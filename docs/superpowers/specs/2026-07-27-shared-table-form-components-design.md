@@ -10,7 +10,7 @@
 
 Remove two copy-pasted UI patterns repeated across `apps/desktop` and `apps/web`:
 a TanStack Table render shell (7 sites) and a react-hook-form error-display wiring
-pair (8 sites, including one non-RHF outlier). Both apps keep their own copy of each
+pair (9 sites, including two non-RHF outliers). Both apps keep their own copy of each
 extraction (no cross-app package, per this project's existing architecture) — same
 pattern already used for `groupBy` and the shared zod schemas.
 
@@ -54,6 +54,8 @@ interface DataTableProps<TData> {
   isLoading?: boolean;
   loadingState?: ReactNode;
   emptyState?: ReactNode;
+  onRowClick?: (row: TData) => void;
+  rowClassName?: string;
 }
 
 export function DataTable<TData>({
@@ -62,6 +64,8 @@ export function DataTable<TData>({
   isLoading,
   loadingState,
   emptyState,
+  onRowClick,
+  rowClassName,
 }: DataTableProps<TData>) {
   const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
 
@@ -85,7 +89,11 @@ export function DataTable<TData>({
       </TableHeader>
       <TableBody>
         {table.getRowModel().rows.map(row => (
-          <TableRow key={row.id}>
+          <TableRow
+            key={row.id}
+            className={onRowClick ? rowClassName : undefined}
+            onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+          >
             {row.getVisibleCells().map(cell => (
               <TableCell key={cell.id}>
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -99,12 +107,21 @@ export function DataTable<TData>({
 }
 ```
 
+**Found while reading the actual files (not caught by the earlier survey):**
+`MonthlyExpensesView.tsx` (desktop) and `MonthlySalesView.tsx` (both apps) have a
+row-click-to-navigate behavior — clicking a row calls `onJumpToDate(row.original.date)`
+— with a row `className` (`"cursor-pointer"` or `"cursor-pointer hover:bg-muted/50"`,
+which differ slightly between sites but are each static, not conditional per row).
+`onRowClick`/`rowClassName` above cover this; the other 4 table sites
+(`CustomersView` ×2, `UserManagementView` ×2) simply omit both props.
+
 Each of the 7 call sites drops its own `useReactTable(...)` call and the
 `<Table>...</Table>` JSX block, replacing both with `<DataTable columns={columns}
-data={data} isLoading={...} emptyState={...} />`. Column definitions
-(`createColumnHelper`, `columnHelper.accessor(...)`) stay exactly where they are —
-this is only extracting the shell that renders a `Table<TData>`, not building a
-"smart table" with sorting/pagination/filtering, since none of the 7 sites use any of
+data={data} isLoading={...} emptyState={...} />` (plus `onRowClick`/`rowClassName` for
+the 3 sites that need them). Column definitions (`createColumnHelper`,
+`columnHelper.accessor(...)`) stay exactly where they are — this is only extracting
+the shell that renders a `Table<TData>`, not building a "smart table" with
+sorting/pagination/filtering, since none of the 7 sites use any of
 that today (YAGNI: no feature is added beyond what's already there).
 
 `isLoading`/`loadingState`/`emptyState` are optional so call sites that don't
@@ -116,7 +133,7 @@ standardized to one shared message.
 
 ## 2. `toFieldErrors` — unify RHF and manual error shapes for `FieldError`
 
-Confirmed by direct file comparison: 7 of 8 sites repeat the same 2-line pattern per
+Confirmed by direct file comparison: 7 of 9 sites repeat the same 2-line pattern per
 form field —
 
 ```tsx
@@ -128,8 +145,9 @@ form field —
 shadcn-style primitive at `components/ui/field.tsx`) takes `errors?: Array<{
 message?: string }>`, not a context lookup (this codebase doesn't use shadcn's
 `Form`/`FormField` pattern — established during the original form-building work).
-The 8th site, `DailySalesView.tsx`, uses the same `FieldError` primitive but with a
-manually-managed string error instead of an RHF `FieldErrors` entry:
+Two sites, `DailySalesView.tsx` and `ExpensesView.tsx`, use the same `FieldError`
+primitive but with a manually-managed string error instead of an RHF `FieldErrors`
+entry (both share an identical `useState<string | null>(null)` pattern):
 
 ```tsx
 <FieldError errors={error ? [{ message: error }] : undefined} />
@@ -141,6 +159,7 @@ manually-managed string error instead of an RHF `FieldErrors` entry:
 - `apps/desktop/src/components/views/CustomersView.tsx` (2 fields)
 - `apps/desktop/src/components/views/UserManagementView.tsx` (4 fields)
 - `apps/desktop/src/components/views/DailySalesView.tsx` (manual string error, not RHF)
+- `apps/desktop/src/components/views/ExpensesView.tsx` (manual string error, not RHF)
 - `apps/desktop/src/components/auth/LoginForm.tsx` (2 fields)
 - `apps/web/src/components/views/UserManagementView.tsx` (4 fields)
 - `apps/web/src/components/auth/LoginForm.tsx` (2 fields)
@@ -154,7 +173,7 @@ state or context, just like `groupBy`:
 
 ```ts
 export function toFieldErrors(
-  error: { message?: string } | string | undefined,
+  error: { message?: string } | string | null | undefined,
 ): Array<{ message?: string }> | undefined {
   if (!error) return undefined;
   return [typeof error === 'string' ? { message: error } : error];
@@ -169,11 +188,12 @@ its adjacent `aria-invalid={!!...}` to reuse the same call:
 <FieldError errors={toFieldErrors(errors.name)} />
 ```
 
-`DailySalesView.tsx` becomes `toFieldErrors(error)` (its own local `error: string`
-variable) — no special-casing needed, since `toFieldErrors` accepts either shape
-directly. This is why the union-typed helper (rather than an RHF-only helper plus a
-separate string-only helper) was chosen: one function covers all 8 sites with no
-site needing to know which shape it's holding.
+`DailySalesView.tsx` and `ExpensesView.tsx` both become `toFieldErrors(error)` (each
+has its own local `error: string | null` variable — the `| null` in the helper's
+signature exists specifically for these two sites) — no special-casing needed, since
+`toFieldErrors` accepts either shape directly. This is why the union-typed helper
+(rather than an RHF-only helper plus a separate string-only helper) was chosen: one
+function covers all 9 sites with no site needing to know which shape it's holding.
 
 ## Testing
 

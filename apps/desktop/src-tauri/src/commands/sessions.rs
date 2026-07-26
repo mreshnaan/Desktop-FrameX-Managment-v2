@@ -85,16 +85,18 @@ pub(crate) async fn do_create_session(
     billing_type: String,
     date: String,
 ) -> Result<Session, String> {
-    let amount = if billing_type == "frame" {
+    let (amount, metadata) = if billing_type == "frame" {
         let rate: Option<(Option<i64>,)> =
             sqlx::query_as("SELECT frame_rate FROM rates WHERE category_id = ?")
                 .bind(&category_id)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        calc_frame_amount(rate.and_then(|r| r.0).unwrap_or(0))
+        let rate_value = rate.and_then(|r| r.0).unwrap_or(0);
+        let metadata = json!({"billingType": "frame", "rateValue": rate_value}).to_string();
+        (calc_frame_amount(rate_value), Some(metadata))
     } else {
-        0
+        (0, None)
     };
 
     let session = Session {
@@ -108,7 +110,7 @@ pub(crate) async fn do_create_session(
         customer_id: None,
         updated_at: crate::time::now_iso(),
         deleted_at: None,
-        metadata: None,
+        metadata,
     };
 
     let actor = get_current_actor(pool).await;
@@ -201,6 +203,9 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
                     &existing.end,
                     hour_rate.unwrap_or(0),
                     half_rate.unwrap_or(0),
+                );
+                existing.metadata = Some(
+                    json!({"billingType": "time", "hourRate": hour_rate.unwrap_or(0), "halfRate": half_rate.unwrap_or(0)}).to_string(),
                 );
             }
         }
@@ -298,6 +303,43 @@ mod tests {
 
         assert_eq!(session.amount, 150);
         assert_eq!(session.start, "");
+    }
+
+    #[tokio::test]
+    async fn a_frame_session_stores_the_rate_used_as_metadata() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_frame_station(&pool, 150).await;
+
+        let session = do_create_session(&pool, station_id, category_id, "frame".to_string(), "2026-07-25".to_string())
+            .await
+            .unwrap();
+
+        let metadata: serde_json::Value = serde_json::from_str(session.metadata.as_deref().unwrap()).unwrap();
+        assert_eq!(metadata["billingType"], "frame");
+        assert_eq!(metadata["rateValue"], 150);
+    }
+
+    #[tokio::test]
+    async fn a_time_session_has_no_metadata_until_the_first_recompute_then_stores_both_rates() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 200, 100).await;
+        let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-25".to_string())
+            .await
+            .unwrap();
+        assert!(session.metadata.is_none(), "no rate has been used yet -- amount is still 0");
+
+        let updated = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { start: Some("09:00".to_string()), end: Some("10:30".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+        let metadata: serde_json::Value = serde_json::from_str(updated.metadata.as_deref().unwrap()).unwrap();
+        assert_eq!(metadata["billingType"], "time");
+        assert_eq!(metadata["hourRate"], 200);
+        assert_eq!(metadata["halfRate"], 100);
     }
 
     #[tokio::test]

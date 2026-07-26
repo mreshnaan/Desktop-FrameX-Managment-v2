@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 pub(crate) async fn do_list_all_sessions(pool: &SqlitePool) -> Result<Vec<Session>, String> {
     sqlx::query_as::<_, Session>(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata
          FROM sessions WHERE deleted_at IS NULL",
     )
     .fetch_all(pool)
@@ -31,7 +31,7 @@ pub(crate) async fn do_list_sessions_between(
     end_date: String,
 ) -> Result<Vec<Session>, String> {
     sqlx::query_as::<_, Session>(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata
          FROM sessions WHERE date >= ? AND date <= ? AND deleted_at IS NULL",
     )
     .bind(start_date)
@@ -54,7 +54,7 @@ pub async fn list_sessions_between(
 
 pub(crate) async fn do_list_sessions_for_date(pool: &SqlitePool, date: String) -> Result<Vec<Session>, String> {
     sqlx::query_as::<_, Session>(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata
          FROM sessions WHERE date = ? AND deleted_at IS NULL",
     )
     .bind(date)
@@ -74,6 +74,7 @@ fn session_payload(s: &Session, created_by: &Option<String>, updated_by: &Option
         "amount": s.amount, "method": s.method, "customerId": s.customer_id,
         "updatedAt": s.updated_at, "deletedAt": s.deleted_at,
         "createdBy": created_by, "updatedBy": updated_by,
+        "metadata": s.metadata.as_deref().and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok()),
     })
 }
 
@@ -107,13 +108,14 @@ pub(crate) async fn do_create_session(
         customer_id: None,
         updated_at: crate::time::now_iso(),
         deleted_at: None,
+        metadata: None,
     };
 
     let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query(
-        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
+        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)",
     )
     .bind(&session.id)
     .bind(&session.station_id)
@@ -124,6 +126,7 @@ pub(crate) async fn do_create_session(
     .bind(&session.method)
     .bind(&session.customer_id)
     .bind(&session.updated_at)
+    .bind(&session.metadata)
     .bind(&actor)
     .bind(&actor)
     .execute(&mut *tx)
@@ -164,7 +167,7 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let mut existing: Session = sqlx::query_as(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata
          FROM sessions WHERE id = ?",
     )
     .bind(&id)
@@ -205,7 +208,7 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     existing.updated_at = crate::time::now_iso();
 
     sqlx::query(
-        "UPDATE sessions SET start = ?, \"end\" = ?, amount = ?, method = ?, customer_id = ?, updated_at = ?, updated_by = ? WHERE id = ?",
+        "UPDATE sessions SET start = ?, \"end\" = ?, amount = ?, method = ?, customer_id = ?, updated_at = ?, updated_by = ?, metadata = ? WHERE id = ?",
     )
     .bind(&existing.start)
     .bind(&existing.end)
@@ -214,6 +217,7 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     .bind(&existing.customer_id)
     .bind(&existing.updated_at)
     .bind(&actor)
+    .bind(&existing.metadata)
     .bind(&id)
     .execute(&mut *tx)
     .await

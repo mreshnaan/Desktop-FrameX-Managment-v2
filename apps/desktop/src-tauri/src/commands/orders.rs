@@ -132,7 +132,7 @@ pub(crate) async fn do_create_order(
 
         let order_item_id = Uuid::new_v4().to_string();
         sqlx::query(
-            "INSERT INTO order_items (id, order_id, product_id, qty, unit_price, line_total, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO order_items (id, order_id, product_id, qty, unit_price, line_total, updated_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&order_item_id)
         .bind(&order_id)
@@ -141,6 +141,7 @@ pub(crate) async fn do_create_order(
         .bind(product.price)
         .bind(line_total)
         .bind(&now)
+        .bind(None::<String>)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
@@ -152,10 +153,12 @@ pub(crate) async fn do_create_order(
             unit_price: product.price,
             line_total,
             updated_at: now.clone(),
+            metadata: None,
         };
         let oi_payload = json!({
             "id": oi.id, "orderId": oi.order_id, "productId": oi.product_id,
             "qty": oi.qty, "unitPrice": oi.unit_price, "lineTotal": oi.line_total, "updatedAt": oi.updated_at,
+            "metadata": oi.metadata.as_deref().and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok()),
         });
         enqueue_outbox_tx(&mut tx, "orderItems", "upsert", &oi.id, &oi_payload)
             .await
@@ -228,7 +231,7 @@ pub(crate) async fn do_list_order_items_between(
     end_utc: &str,
 ) -> Result<Vec<OrderItem>, String> {
     sqlx::query_as::<_, OrderItem>(
-        "SELECT oi.id, oi.order_id, oi.product_id, oi.qty, oi.unit_price, oi.line_total, oi.updated_at
+        "SELECT oi.id, oi.order_id, oi.product_id, oi.qty, oi.unit_price, oi.line_total, oi.updated_at, oi.metadata
          FROM order_items oi
          JOIN orders o ON o.id = oi.order_id
          WHERE o.deleted_at IS NULL AND o.updated_at >= ? AND o.updated_at < ?",

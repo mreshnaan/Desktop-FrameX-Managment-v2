@@ -54,6 +54,7 @@ pub struct Session {
     pub customer_id: Option<String>,
     pub updated_at: String,
     pub deleted_at: Option<String>,
+    pub metadata: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -125,6 +126,7 @@ pub struct OrderItem {
     pub unit_price: i64,
     pub line_total: i64,
     pub updated_at: String,
+    pub metadata: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]

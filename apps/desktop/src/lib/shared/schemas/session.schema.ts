@@ -11,6 +11,7 @@ const sessionBaseSchema = z.object({
   customerId: z.string().uuid().nullable(),
   updatedAt: z.string().datetime().optional(),
   deletedAt: z.string().datetime().nullable().optional(),
+  metadata: z.string().nullable(),
 });
 
 const checkCreditCustomer = (data: {
@@ -31,7 +32,7 @@ export const SessionSchema = sessionBaseSchema.refine(
 export type Session = z.infer<typeof SessionSchema>;
 
 export const SessionDraftSchema = sessionBaseSchema
-  .omit({ id: true, updatedAt: true, deletedAt: true })
+  .omit({ id: true, updatedAt: true, deletedAt: true, metadata: true })
   .refine(checkCreditCustomer, creditCustomerError);
 
 export type SessionDraft = z.infer<typeof SessionDraftSchema>;

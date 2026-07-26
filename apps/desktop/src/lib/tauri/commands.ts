@@ -127,6 +127,7 @@ export interface OrderItemRow {
   unitPrice: number;
   lineTotal: number;
   updatedAt: string;
+  metadata: string | null;
 }
 
 export interface OrderWithItems extends OrderRow {

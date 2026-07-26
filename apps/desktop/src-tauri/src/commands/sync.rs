@@ -165,13 +165,17 @@ async fn apply_one(
             if !is_newer(tx, "sessions", &id, row).await? {
                 return Ok(());
             }
+            let metadata: Option<String> = match &row["metadata"] {
+                serde_json::Value::Null => None,
+                v => Some(v.to_string()),
+            };
             sqlx::query(
-                "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(id) DO UPDATE SET station_id = excluded.station_id, date = excluded.date,
                    start = excluded.start, \"end\" = excluded.\"end\", amount = excluded.amount,
                    method = excluded.method, customer_id = excluded.customer_id,
-                   updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
+                   updated_at = excluded.updated_at, deleted_at = excluded.deleted_at, metadata = excluded.metadata",
             )
             .bind(&id)
             .bind(row["stationId"].as_str().unwrap_or_default())
@@ -183,6 +187,7 @@ async fn apply_one(
             .bind(row["customerId"].as_str())
             .bind(row["updatedAt"].as_str().unwrap_or_default())
             .bind(row["deletedAt"].as_str())
+            .bind(metadata)
             .execute(&mut **tx)
             .await?;
         }
@@ -282,11 +287,15 @@ async fn apply_one(
             if !is_newer(tx, "order_items", &id, row).await? {
                 return Ok(());
             }
+            let metadata: Option<String> = match &row["metadata"] {
+                serde_json::Value::Null => None,
+                v => Some(v.to_string()),
+            };
             sqlx::query(
-                "INSERT INTO order_items (id, order_id, product_id, qty, unit_price, line_total, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+                "INSERT INTO order_items (id, order_id, product_id, qty, unit_price, line_total, updated_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(id) DO UPDATE SET order_id = excluded.order_id, product_id = excluded.product_id,
                    qty = excluded.qty, unit_price = excluded.unit_price, line_total = excluded.line_total,
-                   updated_at = excluded.updated_at",
+                   updated_at = excluded.updated_at, metadata = excluded.metadata",
             )
             .bind(&id)
             .bind(row["orderId"].as_str().unwrap_or_default())
@@ -295,6 +304,7 @@ async fn apply_one(
             .bind(row["unitPrice"].as_i64().unwrap_or(0))
             .bind(row["lineTotal"].as_i64().unwrap_or(0))
             .bind(row["updatedAt"].as_str().unwrap_or_default())
+            .bind(metadata)
             .execute(&mut **tx)
             .await?;
         }

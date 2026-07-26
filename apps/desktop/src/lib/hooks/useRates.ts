@@ -1,6 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands, type RateRow } from '../tauri/commands';
-import { useInvalidateAfter } from './useInvalidateAfter';
 
 export interface RateWithCategory extends RateRow {
   categoryName: string;
@@ -8,7 +7,8 @@ export interface RateWithCategory extends RateRow {
 }
 
 export function useRates() {
-  const invalidate = useInvalidateAfter([['rates']]);
+  const qc = useQueryClient();
+
   const query = useQuery({
     queryKey: ['rates'],
     queryFn: async (): Promise<RateWithCategory[]> => {
@@ -29,9 +29,11 @@ export function useRates() {
     },
   });
 
-  async function setRate(row: { categoryId: string; hour: number | null; half: number | null; value: number | null }) {
-    await invalidate(() => commands.upsertRate(row.categoryId, row.hour, row.half, row.value));
-  }
+  const setRate = useMutation({
+    mutationFn: (row: { categoryId: string; hour: number | null; half: number | null; value: number | null }) =>
+      commands.upsertRate(row.categoryId, row.hour, row.half, row.value),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['rates'] }),
+  });
 
   return { rates: query.data ?? [], setRate };
 }

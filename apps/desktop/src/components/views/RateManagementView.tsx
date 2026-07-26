@@ -1,17 +1,18 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { type UseMutationResult } from '@tanstack/react-query';
 import { TimeRateSchema, FrameRateSchema, toFieldErrors, type TimeRateInput, type FrameRateInput } from '@/lib/shared';
 import { useRates, type RateWithCategory } from '@/lib/hooks/useRates';
+import { type RateRow } from '@/lib/tauri/commands';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Field, FieldGroup, FieldLabel, FieldError } from '@/components/ui/field';
 
-type SetRateFn = (row: {
-  categoryId: string;
-  hour: number | null;
-  half: number | null;
-  value: number | null;
-}) => Promise<void>;
+type SetRateFn = UseMutationResult<
+  RateRow,
+  Error,
+  { categoryId: string; hour: number | null; half: number | null; value: number | null }
+>;
 
 export default function RateManagementView() {
   const { rates, setRate } = useRates();
@@ -40,7 +41,7 @@ function TimeRateCard({ row, setRate }: { row: RateWithCategory; setRate: SetRat
   });
 
   async function onSubmit(data: TimeRateInput) {
-    await setRate({
+    await setRate.mutateAsync({
       categoryId: row.categoryId,
       hour: data.hour,
       half: data.half,
@@ -100,7 +101,7 @@ function FrameRateCard({ row, setRate }: { row: RateWithCategory; setRate: SetRa
   });
 
   async function onSubmit(data: FrameRateInput) {
-    await setRate({
+    await setRate.mutateAsync({
       categoryId: row.categoryId,
       hour: null,
       half: null,

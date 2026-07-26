@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   createColumnHelper,
   type ColumnDef,
@@ -48,7 +47,6 @@ export default function UserManagementView() {
   const { state } = useAuth();
   const accessToken = state.accessToken;
   const queryClient = useQueryClient();
-  const [formError, setFormError] = useState<string | null>(null);
 
   const usersQuery = useQuery({
     queryKey: ['users'],
@@ -70,19 +68,15 @@ export default function UserManagementView() {
     defaultValues: { username: '', pin: '', name: '', roleId: '' },
   });
 
+  const createUser = useMutation({
+    mutationFn: (data: CreateUserInput) =>
+      apiFetch<UserRow>('/users', { method: 'POST', body: JSON.stringify(data), accessToken }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+
   async function onSubmit(data: CreateUserInput) {
-    setFormError(null);
-    try {
-      await apiFetch<UserRow>('/users', {
-        method: 'POST',
-        body: JSON.stringify(data),
-        accessToken,
-      });
-      reset();
-      await queryClient.invalidateQueries({ queryKey: ['users'] });
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to create user');
-    }
+    await createUser.mutateAsync(data);
+    reset();
   }
 
   return (
@@ -150,12 +144,12 @@ export default function UserManagementView() {
                 <FieldError errors={toFieldErrors(errors.roleId)} />
               </Field>
             </FieldGroup>
-            {formError && (
+            {createUser.error && (
               <p role="alert" className="text-sm font-normal text-destructive">
-                {formError}
+                {createUser.error.message}
               </p>
             )}
-            <Button type="submit" disabled={isSubmitting} className="self-start">
+            <Button type="submit" disabled={isSubmitting || createUser.isPending} className="self-start">
               Create user
             </Button>
           </form>

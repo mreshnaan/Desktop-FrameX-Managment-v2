@@ -5,7 +5,7 @@ import { useInvalidateAfter } from './useInvalidateAfter';
 
 export function useSessions(date: string) {
   const key = ['sessions', date];
-  const invalidate = useInvalidateAfter(key);
+  const invalidate = useInvalidateAfter([key]);
 
   const query = useQuery({
     queryKey: key,

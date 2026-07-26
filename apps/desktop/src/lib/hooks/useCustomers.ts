@@ -5,8 +5,8 @@ import { useInvalidateAfter } from './useInvalidateAfter';
 // Balances are pre-aggregated in SQLite via get_customer_balances --
 // balanceFor is just a direct property lookup, no client-side computation.
 export function useCustomers() {
-  const invalidateCustomers = useInvalidateAfter(['customers'], ['customer-balances']);
-  const invalidateCreditEntries = useInvalidateAfter(['credit-entries'], ['customer-balances']);
+  const invalidateCustomers = useInvalidateAfter([['customers'], ['customer-balances']]);
+  const invalidateCreditEntries = useInvalidateAfter([['credit-entries'], ['customer-balances']]);
 
   const customersQuery = useQuery({
     queryKey: ['customers'],

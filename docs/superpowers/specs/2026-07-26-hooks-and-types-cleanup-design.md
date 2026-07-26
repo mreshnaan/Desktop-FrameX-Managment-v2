@@ -128,6 +128,31 @@ invalidation. `useOrders.ts`'s `checkout` invalidates three separate keys (`orde
 `order-items`, `products`) — it gets its own small helper or three calls, whichever reads
 more clearly; the implementer decides based on what's there when writing the plan's task.
 
+## Known tradeoffs (added after final review)
+
+- **Sequential invalidation became parallel.** Every original call site awaited each
+  `invalidateQueries` one at a time; `useInvalidateAfter` runs them via `Promise.all`.
+  The end state is identical (all queries are refetched before the mutation's promise
+  resolves) and the desktop SQLite pool (`max_connections(5)`) has headroom for the
+  handful of concurrent reads this produces, so this is accepted as the better
+  behavior rather than reverted — but it is a real change to intermediate render/error
+  ordering, not a strict no-op.
+- **The IPC boundary is now typed by schemas built for form/draft validation, with no
+  runtime check.** `commands.ts` does `invoke<Session[]>(...)` etc. — an unchecked
+  cast. Previously the hand-rolled Row types were an independent declaration of the
+  Rust wire shape, so a schema edit made for form reasons (e.g. `updatedAt` being
+  `.optional()` to support draft shapes) couldn't silently change what `commands.ts`
+  asserts a Tauri command returns. That decoupling is now gone. Accepted for this
+  sub-project since no current code path reads `updatedAt`/`deletedAt` on these
+  entities, but a future field added to a schema for form reasons (not confirmed present
+  in Rust) would not be caught by `tsc` or any test. If this bites in practice, the fix
+  is either explicit wire types or parsing at the boundary — not in scope here.
+- **`RoleManagementView.tsx`** still does its own two-key sequential invalidate and was
+  deliberately not converted, for the same reason `CategoryManagementView.tsx` wasn't:
+  both invalidate from view-level `commands.X()` calls with `onCreated`/`onRenamed`
+  callback props, not from a `useX()` hook, so `useInvalidateAfter` doesn't fit their
+  shape without a larger restructure that's out of scope here.
+
 ## Testing
 
 No behavior change is intended anywhere in this sub-project — it is a pure type/structure

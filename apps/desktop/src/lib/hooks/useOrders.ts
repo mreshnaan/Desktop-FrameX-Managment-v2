@@ -20,7 +20,7 @@ export function useOrders() {
   // Invalidating the ['orders']/['order-items'] prefixes also catches
   // useOrdersBetween's more specific keys. Checkout decrements stock
   // server-side too, so ['products'] is invalidated alongside them.
-  const invalidate = useInvalidateAfter(['orders'], ['order-items'], ['products']);
+  const invalidate = useInvalidateAfter([['orders'], ['order-items'], ['products']]);
 
   async function checkout(items: CartItemInput[], method: string, customerId: string | null) {
     return invalidate(() => commands.createOrder(items, method, customerId));

@@ -3,7 +3,7 @@ import { commands, type ProductRow } from '../tauri/commands';
 import { useInvalidateAfter } from './useInvalidateAfter';
 
 export function useProducts() {
-  const invalidate = useInvalidateAfter(['product-categories'], ['products']);
+  const invalidate = useInvalidateAfter([['product-categories'], ['products']]);
   const categoriesQuery = useQuery({ queryKey: ['product-categories'], queryFn: () => commands.listProductCategories() });
   const productsQuery = useQuery({ queryKey: ['products'], queryFn: () => commands.listProducts() });
 

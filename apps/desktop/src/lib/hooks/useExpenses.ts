@@ -8,8 +8,8 @@ export function useExpenses(date: string) {
   // Broader than `key` alone: a backdated expense lands on a different day's
   // cache than the one currently being viewed, so addExpense invalidates
   // every cached expenses-day query instead of just this one.
-  const invalidateAllDays = useInvalidateAfter(['expenses']);
-  const invalidateThisDay = useInvalidateAfter(key);
+  const invalidateAllDays = useInvalidateAfter([['expenses']]);
+  const invalidateThisDay = useInvalidateAfter([key]);
 
   const query = useQuery({
     queryKey: key,

@@ -8,7 +8,7 @@ export interface RateWithCategory extends RateRow {
 }
 
 export function useRates() {
-  const invalidate = useInvalidateAfter(['rates']);
+  const invalidate = useInvalidateAfter([['rates']]);
   const query = useQuery({
     queryKey: ['rates'],
     queryFn: async (): Promise<RateWithCategory[]> => {

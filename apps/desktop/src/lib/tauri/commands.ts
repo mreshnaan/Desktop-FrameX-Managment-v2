@@ -38,7 +38,7 @@ export interface RateRow {
   updatedAt: string;
 }
 
-interface RawRateRow {
+export interface RawRateRow {
   id: string;
   categoryId: string;
   hourRate: number | null;
@@ -47,7 +47,10 @@ interface RawRateRow {
   updatedAt: string;
 }
 
-function toRateRow(raw: RawRateRow): RateRow {
+// Exported so a unit test can catch a hour/half/value field swap directly --
+// e2e coverage only exercises this through react-hook-form defaultValues,
+// which wouldn't fail on a swap (see sub-project 2 review, issue #4).
+export function toRateRow(raw: RawRateRow): RateRow {
   return {
     id: raw.id,
     categoryId: raw.categoryId,

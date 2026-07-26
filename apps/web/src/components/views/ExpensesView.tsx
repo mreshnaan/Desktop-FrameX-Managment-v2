@@ -12,7 +12,7 @@ interface ExpensesViewProps {
 // Read-only: expenses are recorded on the desktop app -- web only displays
 // the day's entries and total.
 export default function ExpensesView({ date, onDateChange }: ExpensesViewProps) {
-  const { expenses } = useExpenses(date);
+  const { expenses, isError } = useExpenses(date);
 
   const total = useMemo(() => expenses.reduce((sum, e) => sum + e.amount, 0), [expenses]);
 
@@ -32,7 +32,9 @@ export default function ExpensesView({ date, onDateChange }: ExpensesViewProps) 
           <CardTitle>Expenses</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {expenses.length === 0 ? (
+          {isError ? (
+            <p className="text-sm text-destructive">Couldn't load — check your connection and try again.</p>
+          ) : expenses.length === 0 ? (
             <p className="text-sm text-muted-foreground">No expenses recorded for this day.</p>
           ) : (
             expenses.map(expense => <ExpenseRow key={expense.id} expense={expense} />)

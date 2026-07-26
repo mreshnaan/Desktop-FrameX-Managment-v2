@@ -14,5 +14,5 @@ export function useExpenses(date: string) {
     enabled: !!state.accessToken,
   });
 
-  return { expenses: query.data ?? [], isLoading: query.isLoading };
+  return { expenses: query.data ?? [], isLoading: query.isLoading, isError: query.isError };
 }

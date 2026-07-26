@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { formatCurrency, type Session, type Customer, type Billing } from '@/lib/shared';
+import { formatCurrency, groupBy, type Session, type Customer, type Billing } from '@/lib/shared';
 import { useSessions } from '@/lib/hooks/useSessions';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useCategories, type CategoryWithStations, type CategoryStation } from '@/lib/hooks/useCategories';
@@ -19,7 +19,7 @@ interface Summary {
 }
 
 export default function DailySalesView({ date, onDateChange }: DailySalesViewProps) {
-  const { sessions, isLoading } = useSessions(date);
+  const { sessions, isLoading, isError } = useSessions(date);
   const { customers } = useCustomers();
   const { categories } = useCategories();
 
@@ -32,13 +32,19 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
     return totals;
   }, [sessions]);
 
+  // Single grouping pass instead of re-filtering the day's sessions once per
+  // category (here) and again once per station (in CategoryGroup).
+  const sessionsByStationId = useMemo(() => groupBy(sessions, s => s.stationId), [sessions]);
+
   return (
     <div className="flex flex-col gap-6 p-4">
       <h1 className="text-xl font-semibold">Daily Sales</h1>
       <DateStepper date={date} onDateChange={onDateChange} />
       <SummaryStrip summary={summary} />
 
-      {isLoading ? (
+      {isError ? (
+        <p className="text-sm text-destructive">Couldn't load — check your connection and try again.</p>
+      ) : isLoading ? (
         <p className="text-sm text-muted-foreground">Loading sessions…</p>
       ) : (
         <div className="flex flex-col gap-6">
@@ -46,7 +52,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
             <CategoryGroup
               key={category.id}
               category={category}
-              sessions={sessions.filter(s => category.stations.some(st => st.id === s.stationId))}
+              sessionsByStationId={sessionsByStationId}
               customers={customers}
             />
           ))}
@@ -85,11 +91,11 @@ function SummaryStrip({ summary }: { summary: Summary }) {
 
 function CategoryGroup({
   category,
-  sessions,
+  sessionsByStationId,
   customers,
 }: {
   category: CategoryWithStations;
-  sessions: Session[];
+  sessionsByStationId: Map<string, Session[]>;
   customers: Customer[];
 }) {
   return (
@@ -101,7 +107,7 @@ function CategoryGroup({
             key={station.id}
             category={category}
             station={station}
-            sessions={sessions.filter(s => s.stationId === station.id)}
+            sessions={sessionsByStationId.get(station.id) ?? []}
             customers={customers}
           />
         ))}

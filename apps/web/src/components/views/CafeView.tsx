@@ -133,7 +133,9 @@ function OrdersTable({ date }: { date: string }) {
         <CardTitle>Orders</CardTitle>
       </CardHeader>
       <CardContent className="px-0">
-        {query.isLoading ? (
+        {query.isError ? (
+          <p className="px-4 text-sm text-destructive">Couldn't load — check your connection and try again.</p>
+        ) : query.isLoading ? (
           <p className="px-4 text-sm text-muted-foreground">Loading…</p>
         ) : rows.length === 0 ? (
           <p className="px-4 text-sm text-muted-foreground">No orders for this day.</p>

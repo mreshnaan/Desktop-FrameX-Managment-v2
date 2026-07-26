@@ -14,5 +14,5 @@ export function useSessions(date: string) {
     enabled: !!state.accessToken,
   });
 
-  return { sessions: query.data ?? [], isLoading: query.isLoading };
+  return { sessions: query.data ?? [], isLoading: query.isLoading, isError: query.isError };
 }

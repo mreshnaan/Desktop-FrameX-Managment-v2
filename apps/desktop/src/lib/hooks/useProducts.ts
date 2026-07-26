@@ -1,19 +1,14 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { commands, type ProductRow } from '../tauri/commands';
+import { useInvalidateAfter } from './useInvalidateAfter';
 
 export function useProducts() {
-  const qc = useQueryClient();
+  const invalidate = useInvalidateAfter(['product-categories'], ['products']);
   const categoriesQuery = useQuery({ queryKey: ['product-categories'], queryFn: () => commands.listProductCategories() });
   const productsQuery = useQuery({ queryKey: ['products'], queryFn: () => commands.listProducts() });
 
-  async function refresh() {
-    await qc.invalidateQueries({ queryKey: ['product-categories'] });
-    await qc.invalidateQueries({ queryKey: ['products'] });
-  }
-
   async function addCategory(name: string) {
-    await commands.createProductCategory(name);
-    await refresh();
+    await invalidate(() => commands.createProductCategory(name));
   }
 
   async function addProduct(input: {
@@ -24,10 +19,9 @@ export function useProducts() {
     lowStockThreshold: number;
     barcode: string | null;
   }) {
-    await commands.createProduct(
+    await invalidate(() => commands.createProduct(
       input.categoryId, input.name, input.price, input.cost, input.lowStockThreshold, input.barcode,
-    );
-    await refresh();
+    ));
   }
 
   async function updateProduct(input: {
@@ -39,15 +33,13 @@ export function useProducts() {
     barcode: string | null;
     active: boolean;
   }) {
-    await commands.updateProduct(
+    await invalidate(() => commands.updateProduct(
       input.id, input.name, input.price, input.cost, input.lowStockThreshold, input.barcode, input.active,
-    );
-    await refresh();
+    ));
   }
 
   async function adjustStock(productId: string, delta: number, reason: string, note: string | null) {
-    await commands.adjustStock(productId, delta, reason, note);
-    await refresh();
+    await invalidate(() => commands.adjustStock(productId, delta, reason, note));
   }
 
   return {

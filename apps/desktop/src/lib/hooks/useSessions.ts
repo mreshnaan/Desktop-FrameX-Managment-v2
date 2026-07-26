@@ -1,9 +1,11 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { commands, type SessionRow } from '../tauri/commands';
+import { useQuery } from '@tanstack/react-query';
+import { commands } from '../tauri/commands';
+import type { Session } from '../shared/schemas/session.schema';
+import { useInvalidateAfter } from './useInvalidateAfter';
 
 export function useSessions(date: string) {
-  const qc = useQueryClient();
   const key = ['sessions', date];
+  const invalidate = useInvalidateAfter(key);
 
   const query = useQuery({
     queryKey: key,
@@ -11,24 +13,21 @@ export function useSessions(date: string) {
   });
 
   async function addSession(stationId: string, categoryId: string, billingType: 'time' | 'frame') {
-    await commands.createSession(stationId, categoryId, billingType, date);
-    await qc.invalidateQueries({ queryKey: key });
+    await invalidate(() => commands.createSession(stationId, categoryId, billingType, date));
   }
 
-  async function updateSession(id: string, patch: Partial<SessionRow>) {
-    await commands.updateSession(id, {
+  async function updateSession(id: string, patch: Partial<Session>) {
+    await invalidate(() => commands.updateSession(id, {
       start: patch.start,
       end: patch.end,
       amount: patch.amount,
       method: patch.method,
       customerId: patch.customerId,
-    });
-    await qc.invalidateQueries({ queryKey: key });
+    }));
   }
 
   async function deleteSession(id: string) {
-    await commands.deleteSession(id);
-    await qc.invalidateQueries({ queryKey: key });
+    await invalidate(() => commands.deleteSession(id));
   }
 
   return { sessions: query.data ?? [], isLoading: query.isLoading, addSession, updateSession, deleteSession };

@@ -1,5 +1,6 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { commands, type RateRow } from '../tauri/commands';
+import { useInvalidateAfter } from './useInvalidateAfter';
 
 export interface RateWithCategory extends RateRow {
   categoryName: string;
@@ -7,7 +8,7 @@ export interface RateWithCategory extends RateRow {
 }
 
 export function useRates() {
-  const qc = useQueryClient();
+  const invalidate = useInvalidateAfter(['rates']);
   const query = useQuery({
     queryKey: ['rates'],
     queryFn: async (): Promise<RateWithCategory[]> => {
@@ -18,9 +19,9 @@ export function useRates() {
         const base: RateRow = existing ?? {
           id: '',
           categoryId: c.id,
-          hourRate: c.billingType === 'time' ? 0 : null,
-          halfRate: c.billingType === 'time' ? 0 : null,
-          frameRate: c.billingType === 'frame' ? 0 : null,
+          hour: c.billingType === 'time' ? 0 : null,
+          half: c.billingType === 'time' ? 0 : null,
+          value: c.billingType === 'frame' ? 0 : null,
           updatedAt: new Date().toISOString(),
         };
         return { ...base, categoryName: c.name, billingType: c.billingType };
@@ -28,9 +29,8 @@ export function useRates() {
     },
   });
 
-  async function setRate(row: { categoryId: string; hourRate: number | null; halfRate: number | null; frameRate: number | null }) {
-    await commands.upsertRate(row.categoryId, row.hourRate, row.halfRate, row.frameRate);
-    await qc.invalidateQueries({ queryKey: ['rates'] });
+  async function setRate(row: { categoryId: string; hour: number | null; half: number | null; value: number | null }) {
+    await invalidate(() => commands.upsertRate(row.categoryId, row.hour, row.half, row.value));
   }
 
   return { rates: query.data ?? [], setRate };

@@ -1,10 +1,12 @@
-import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { commands, type CustomerHistoryRow } from '../tauri/commands';
+import { useInvalidateAfter } from './useInvalidateAfter';
 
 // Balances are pre-aggregated in SQLite via get_customer_balances --
 // balanceFor is just a direct property lookup, no client-side computation.
 export function useCustomers() {
-  const qc = useQueryClient();
+  const invalidateCustomers = useInvalidateAfter(['customers'], ['customer-balances']);
+  const invalidateCreditEntries = useInvalidateAfter(['credit-entries'], ['customer-balances']);
 
   const customersQuery = useQuery({
     queryKey: ['customers'],
@@ -22,15 +24,11 @@ export function useCustomers() {
   });
 
   async function addCustomer(input: { name: string; phone?: string }) {
-    await commands.createCustomer(input.name, input.phone ?? '');
-    await qc.invalidateQueries({ queryKey: ['customers'] });
-    await qc.invalidateQueries({ queryKey: ['customer-balances'] });
+    await invalidateCustomers(() => commands.createCustomer(input.name, input.phone ?? ''));
   }
 
   async function deleteCustomer(id: string) {
-    await commands.deleteCustomer(id);
-    await qc.invalidateQueries({ queryKey: ['customers'] });
-    await qc.invalidateQueries({ queryKey: ['customer-balances'] });
+    await invalidateCustomers(() => commands.deleteCustomer(id));
   }
 
   async function adjustCustomer(
@@ -39,9 +37,7 @@ export function useCustomers() {
     type: 'CREDIT_GIVEN' | 'PAYMENT_RECEIVED',
     amount: number,
   ) {
-    await commands.createCreditEntry(customerId, date, type, amount);
-    await qc.invalidateQueries({ queryKey: ['credit-entries'] });
-    await qc.invalidateQueries({ queryKey: ['customer-balances'] });
+    await invalidateCreditEntries(() => commands.createCreditEntry(customerId, date, type, amount));
   }
 
   const balances: Record<string, number> = balancesQuery.data ?? {};

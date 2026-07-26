@@ -1,9 +1,15 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { commands, type ExpenseRow } from '../tauri/commands';
+import { useQuery } from '@tanstack/react-query';
+import { commands } from '../tauri/commands';
+import type { Expense } from '../shared/schemas/expense.schema';
+import { useInvalidateAfter } from './useInvalidateAfter';
 
 export function useExpenses(date: string) {
-  const qc = useQueryClient();
   const key = ['expenses', date];
+  // Broader than `key` alone: a backdated expense lands on a different day's
+  // cache than the one currently being viewed, so addExpense invalidates
+  // every cached expenses-day query instead of just this one.
+  const invalidateAllDays = useInvalidateAfter(['expenses']);
+  const invalidateThisDay = useInvalidateAfter(key);
 
   const query = useQuery({
     queryKey: key,
@@ -14,21 +20,15 @@ export function useExpenses(date: string) {
   // receipt from an earlier day doesn't have to navigate away first --
   // create_expense already took a date param, it was just never exposed.
   async function addExpense(customDate?: string) {
-    await commands.createExpense(customDate ?? date);
-    // Broader than `key` alone: a backdated expense lands on a different
-    // day's cache than the one currently being viewed, so invalidate every
-    // cached expenses-day query instead of just this one.
-    await qc.invalidateQueries({ queryKey: ['expenses'] });
+    await invalidateAllDays(() => commands.createExpense(customDate ?? date));
   }
 
-  async function updateExpense(id: string, patch: Partial<ExpenseRow>) {
-    await commands.updateExpense(id, patch.description, patch.amount, patch.method);
-    await qc.invalidateQueries({ queryKey: key });
+  async function updateExpense(id: string, patch: Partial<Expense>) {
+    await invalidateThisDay(() => commands.updateExpense(id, patch.description, patch.amount, patch.method));
   }
 
   async function deleteExpense(id: string) {
-    await commands.deleteExpense(id);
-    await qc.invalidateQueries({ queryKey: key });
+    await invalidateThisDay(() => commands.deleteExpense(id));
   }
 
   return { expenses: query.data ?? [], addExpense, updateExpense, deleteExpense };

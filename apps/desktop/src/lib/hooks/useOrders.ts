@@ -1,6 +1,7 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { commands, type CartItemInput } from '../tauri/commands';
 import { dateStrOf, localDateRangeToUtc } from '../shared/utils/dates';
+import { useInvalidateAfter } from './useInvalidateAfter';
 
 // Orders have no `date` column -- updatedAt (a UTC instant) is the day they
 // belong to. Read via local calendar date, not a UTC substring (see
@@ -16,17 +17,13 @@ export function orderTimeOf(updatedAt: string): string {
 // Only exposes checkout -- CafeView never reads back a list (the cart lives
 // in useCart()); see useOrdersBetween below for historical reads.
 export function useOrders() {
-  const qc = useQueryClient();
+  // Invalidating the ['orders']/['order-items'] prefixes also catches
+  // useOrdersBetween's more specific keys. Checkout decrements stock
+  // server-side too, so ['products'] is invalidated alongside them.
+  const invalidate = useInvalidateAfter(['orders'], ['order-items'], ['products']);
 
   async function checkout(items: CartItemInput[], method: string, customerId: string | null) {
-    const order = await commands.createOrder(items, method, customerId);
-    // Invalidating the ['orders']/['order-items'] prefix also catches
-    // useOrdersBetween's more specific keys.
-    await qc.invalidateQueries({ queryKey: ['orders'] });
-    await qc.invalidateQueries({ queryKey: ['order-items'] });
-    // Checkout decrements stock server-side -- refresh products too.
-    await qc.invalidateQueries({ queryKey: ['products'] });
-    return order;
+    return invalidate(() => commands.createOrder(items, method, customerId));
   }
 
   return { checkout };

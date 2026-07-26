@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { commands, type BackupInfo } from '@/lib/tauri/commands';
 import { branding } from '@/config/branding';
 import { Button } from '@/components/ui/button';
@@ -14,39 +14,20 @@ function formatBytes(bytes: number): string {
 
 export default function BackupSettingsView() {
   const qc = useQueryClient();
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [restoredFilename, setRestoredFilename] = useState<string | null>(null);
 
   const backupsQuery = useQuery({ queryKey: ['backups'], queryFn: () => commands.listBackups() });
   const dirQuery = useQuery({ queryKey: ['backup-dir'], queryFn: () => commands.getBackupDir() });
 
-  async function runBackup() {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const info = await commands.backupNow();
-      setMessage(`Backup created: ${info.filename}`);
-      await qc.invalidateQueries({ queryKey: ['backups'] });
-    } catch (e) {
-      setMessage(e instanceof Error ? `Backup failed: ${e.message}` : 'Backup failed');
-    } finally {
-      setBusy(false);
-    }
-  }
+  const backup = useMutation({
+    mutationFn: () => commands.backupNow(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
+  });
 
-  async function runRestore(filename: string) {
-    setBusy(true);
-    setMessage(null);
-    try {
-      await commands.restoreBackup(filename);
-      setRestoredFilename(filename);
-    } catch (e) {
-      setMessage(e instanceof Error ? `Restore failed: ${e.message}` : 'Restore failed');
-    } finally {
-      setBusy(false);
-    }
-  }
+  const restore = useMutation({
+    mutationFn: (filename: string) => commands.restoreBackup(filename),
+    onSuccess: (_data, filename) => setRestoredFilename(filename),
+  });
 
   if (restoredFilename) {
     return (
@@ -76,10 +57,11 @@ export default function BackupSettingsView() {
           {dirQuery.data && (
             <p className="text-sm text-muted-foreground">Backups are stored at {dirQuery.data}</p>
           )}
-          <Button type="button" disabled={busy} onClick={runBackup} className="self-start">
+          <Button type="button" disabled={backup.isPending} onClick={() => backup.mutate()} className="self-start">
             Back up now
           </Button>
-          {message && <p className="text-sm text-muted-foreground">{message}</p>}
+          {backup.isSuccess && <p className="text-sm text-muted-foreground">Backup created: {backup.data.filename}</p>}
+          {backup.error && <p className="text-sm text-destructive">Backup failed: {backup.error.message}</p>}
         </CardContent>
       </Card>
 
@@ -94,21 +76,28 @@ export default function BackupSettingsView() {
             <p className="px-4 text-sm text-muted-foreground">No backups yet.</p>
           ) : (
             <div className="flex flex-col gap-2 px-4">
-              {backupsQuery.data.map((backup: BackupInfo) => (
-                <div key={backup.filename} className="flex items-center justify-between rounded-lg border border-border p-2">
+              {backupsQuery.data.map((backupInfo: BackupInfo) => (
+                <div key={backupInfo.filename} className="flex items-center justify-between rounded-lg border border-border p-2">
                   <div>
-                    <p className="text-sm font-medium">{backup.filename}</p>
+                    <p className="text-sm font-medium">{backupInfo.filename}</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(backup.createdAt).toLocaleString()} · {formatBytes(backup.sizeBytes)}
+                      {new Date(backupInfo.createdAt).toLocaleString()} · {formatBytes(backupInfo.sizeBytes)}
                     </p>
                   </div>
-                  <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => runRestore(backup.filename)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={backup.isPending || restore.isPending}
+                    onClick={() => restore.mutate(backupInfo.filename)}
+                  >
                     Restore
                   </Button>
                 </div>
               ))}
             </div>
           )}
+          {restore.error && <p className="mt-2 px-4 text-sm text-destructive">Restore failed: {restore.error.message}</p>}
         </CardContent>
       </Card>
     </div>

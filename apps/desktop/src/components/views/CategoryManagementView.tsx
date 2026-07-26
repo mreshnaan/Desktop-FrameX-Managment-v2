@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { commands } from '@/lib/tauri/commands';
 import { Button } from '@/components/ui/button';
@@ -55,22 +55,17 @@ export default function CategoryManagementView() {
 function NewCategoryCard({ onCreated }: { onCreated: () => void }) {
   const [name, setName] = useState('');
   const [billingType, setBillingType] = useState<'time' | 'frame'>('time');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const createCategory = useMutation({
+    mutationFn: (input: { name: string; billingType: string }) =>
+      commands.createCategory(input.name, input.billingType),
+  });
 
   async function submit() {
     if (!name.trim()) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await commands.createCategory(name.trim(), billingType);
-      setName('');
-      onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create category');
-    } finally {
-      setSubmitting(false);
-    }
+    await createCategory.mutateAsync({ name: name.trim(), billingType });
+    setName('');
+    onCreated();
   }
 
   return (
@@ -96,11 +91,11 @@ function NewCategoryCard({ onCreated }: { onCreated: () => void }) {
               </SelectContent>
             </Select>
           </Field>
-          <Button type="button" disabled={submitting || !name.trim()} onClick={submit}>
+          <Button type="button" disabled={createCategory.isPending || !name.trim()} onClick={submit}>
             Add category
           </Button>
         </FieldGroup>
-        {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+        {createCategory.error && <p className="mt-2 text-sm text-destructive">{createCategory.error.message}</p>}
       </CardContent>
     </Card>
   );
@@ -119,12 +114,17 @@ function RenameCategoryForm({
 }) {
   const [name, setName] = useState(currentName);
 
+  const updateCategory = useMutation({
+    mutationFn: (input: { name: string; billingType: string }) =>
+      commands.updateCategory(categoryId, input.name, input.billingType),
+  });
+
   async function commit() {
     if (!name.trim() || name === currentName) return;
     // billingType isn't editable in this UI, but update_category always
     // writes the full row -- pass the category's current value through so a
     // rename never silently blanks it out.
-    await commands.updateCategory(categoryId, name.trim(), billingType);
+    await updateCategory.mutateAsync({ name: name.trim(), billingType });
     onRenamed();
   }
 
@@ -133,7 +133,7 @@ function RenameCategoryForm({
       <FieldLabel htmlFor={`category-name-${categoryId}`}>Category name</FieldLabel>
       <div className="flex gap-2">
         <Input id={`category-name-${categoryId}`} value={name} onChange={e => setName(e.target.value)} />
-        <Button type="button" variant="outline" size="sm" onClick={commit} disabled={!name.trim() || name === currentName}>
+        <Button type="button" variant="outline" size="sm" onClick={commit} disabled={!name.trim() || name === currentName || updateCategory.isPending}>
           Save
         </Button>
       </div>
@@ -152,16 +152,20 @@ function RenameStationForm({
 }) {
   const [name, setName] = useState(currentName);
 
+  const updateStation = useMutation({
+    mutationFn: (name: string) => commands.updateStation(stationId, name),
+  });
+
   async function commit() {
     if (!name.trim() || name === currentName) return;
-    await commands.updateStation(stationId, name.trim());
+    await updateStation.mutateAsync(name.trim());
     onRenamed();
   }
 
   return (
     <div className="flex items-center gap-2">
       <Input value={name} onChange={e => setName(e.target.value)} className="max-w-48" aria-label="Station name" />
-      <Button type="button" variant="outline" size="sm" onClick={commit} disabled={!name.trim() || name === currentName}>
+      <Button type="button" variant="outline" size="sm" onClick={commit} disabled={!name.trim() || name === currentName || updateStation.isPending}>
         Save
       </Button>
     </div>
@@ -170,18 +174,16 @@ function RenameStationForm({
 
 function NewStationForm({ categoryId, onCreated }: { categoryId: string; onCreated: () => void }) {
   const [name, setName] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+
+  const createStation = useMutation({
+    mutationFn: (name: string) => commands.createStation(categoryId, name),
+  });
 
   async function submit() {
     if (!name.trim()) return;
-    setSubmitting(true);
-    try {
-      await commands.createStation(categoryId, name.trim());
-      setName('');
-      onCreated();
-    } finally {
-      setSubmitting(false);
-    }
+    await createStation.mutateAsync(name.trim());
+    setName('');
+    onCreated();
   }
 
   return (
@@ -193,7 +195,7 @@ function NewStationForm({ categoryId, onCreated }: { categoryId: string; onCreat
         className="max-w-48"
         aria-label="New station name"
       />
-      <Button type="button" variant="outline" size="sm" onClick={submit} disabled={submitting || !name.trim()}>
+      <Button type="button" variant="outline" size="sm" onClick={submit} disabled={createStation.isPending || !name.trim()}>
         + Add station
       </Button>
     </div>

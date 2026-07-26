@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { PERMISSION_KEYS } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
 import { apiFetch } from '@/lib/api/client';
@@ -82,14 +82,15 @@ function NewRoleCard({ onCreated }: { onCreated: () => void }) {
   const accessToken = state.accessToken;
   const [name, setName] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
-  // permissionIds must be real Permission row ids, not keys -- fetch once so
-  // we can map the checked keys to the ids the api expects.
   const permissionsQuery = useQuery({
     queryKey: ['admin-permissions'],
     queryFn: () => apiFetch<{ id: string; key: string }[]>('/roles/permissions', { accessToken }),
+  });
+
+  const createRole = useMutation({
+    mutationFn: (input: { name: string; permissionIds: string[] }) =>
+      apiFetch('/roles', { method: 'POST', accessToken, body: JSON.stringify(input) }),
   });
 
   function toggle(key: string, checked: boolean) {
@@ -103,25 +104,13 @@ function NewRoleCard({ onCreated }: { onCreated: () => void }) {
 
   async function submit() {
     if (!name.trim()) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const permissionIds = (permissionsQuery.data ?? [])
-        .filter(p => selected.has(p.key))
-        .map(p => p.id);
-      await apiFetch('/roles', {
-        method: 'POST',
-        accessToken,
-        body: JSON.stringify({ name: name.trim(), permissionIds }),
-      });
-      setName('');
-      setSelected(new Set());
-      onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create role');
-    } finally {
-      setSubmitting(false);
-    }
+    const permissionIds = (permissionsQuery.data ?? [])
+      .filter(p => selected.has(p.key))
+      .map(p => p.id);
+    await createRole.mutateAsync({ name: name.trim(), permissionIds });
+    setName('');
+    setSelected(new Set());
+    onCreated();
   }
 
   return (
@@ -135,8 +124,8 @@ function NewRoleCard({ onCreated }: { onCreated: () => void }) {
           <Input id="new-role-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Shift Supervisor" />
         </Field>
         <PermissionCheckboxes selected={selected} onChange={toggle} />
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button type="button" className="self-start" disabled={submitting || !name.trim()} onClick={submit}>
+        {createRole.error && <p className="text-sm text-destructive">{createRole.error.message}</p>}
+        <Button type="button" className="self-start" disabled={createRole.isPending || !name.trim()} onClick={submit}>
           Create role
         </Button>
       </CardContent>
@@ -149,11 +138,19 @@ function RoleCard({ role, onChanged }: { role: RoleRow; onChanged: () => void })
   const accessToken = state.accessToken;
   const [name, setName] = useState(role.name);
   const [selected, setSelected] = useState<Set<string>>(new Set(role.permissions.map(p => p.key)));
-  const [error, setError] = useState<string | null>(null);
 
   const permissionsQuery = useQuery({
     queryKey: ['admin-permissions'],
     queryFn: () => apiFetch<{ id: string; key: string }[]>('/roles/permissions', { accessToken }),
+  });
+
+  const updateRole = useMutation({
+    mutationFn: (input: { name: string; permissionIds: string[] }) =>
+      apiFetch(`/roles/${role.id}`, { method: 'PATCH', accessToken, body: JSON.stringify(input) }),
+  });
+
+  const deleteRole = useMutation({
+    mutationFn: () => apiFetch(`/roles/${role.id}`, { method: 'DELETE', accessToken }),
   });
 
   function toggle(key: string, checked: boolean) {
@@ -166,30 +163,16 @@ function RoleCard({ role, onChanged }: { role: RoleRow; onChanged: () => void })
   }
 
   async function save() {
-    setError(null);
-    try {
-      const permissionIds = (permissionsQuery.data ?? [])
-        .filter(p => selected.has(p.key))
-        .map(p => p.id);
-      await apiFetch(`/roles/${role.id}`, {
-        method: 'PATCH',
-        accessToken,
-        body: JSON.stringify({ name: name.trim(), permissionIds }),
-      });
-      onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update role');
-    }
+    const permissionIds = (permissionsQuery.data ?? [])
+      .filter(p => selected.has(p.key))
+      .map(p => p.id);
+    await updateRole.mutateAsync({ name: name.trim(), permissionIds });
+    onChanged();
   }
 
   async function remove() {
-    setError(null);
-    try {
-      await apiFetch(`/roles/${role.id}`, { method: 'DELETE', accessToken });
-      onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete role');
-    }
+    await deleteRole.mutateAsync();
+    onChanged();
   }
 
   return (
@@ -211,13 +194,15 @@ function RoleCard({ role, onChanged }: { role: RoleRow; onChanged: () => void })
           />
         </Field>
         <PermissionCheckboxes selected={selected} onChange={toggle} disabled={role.isSystem} />
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {(updateRole.error || deleteRole.error) && (
+          <p className="text-sm text-destructive">{(updateRole.error ?? deleteRole.error)?.message}</p>
+        )}
         {!role.isSystem && (
           <div className="flex gap-2">
-            <Button type="button" size="sm" onClick={save}>
+            <Button type="button" size="sm" onClick={save} disabled={updateRole.isPending}>
               Save
             </Button>
-            <Button type="button" size="sm" variant="destructive" onClick={remove}>
+            <Button type="button" size="sm" variant="destructive" onClick={remove} disabled={deleteRole.isPending}>
               Delete role
             </Button>
           </div>

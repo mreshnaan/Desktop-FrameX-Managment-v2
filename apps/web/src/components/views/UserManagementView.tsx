@@ -3,10 +3,8 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  useReactTable,
-  getCoreRowModel,
   createColumnHelper,
-  flexRender,
+  type ColumnDef,
 } from '@tanstack/react-table';
 import { CreateUserSchema, type CreateUserInput } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
@@ -23,14 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { DataTable } from '@/components/ui/data-table';
 
 interface UserRow {
   id: string;
@@ -93,12 +84,6 @@ export default function UserManagementView() {
       setFormError(err instanceof Error ? err.message : 'Failed to create user');
     }
   }
-
-  const table = useReactTable({
-    data: usersQuery.data ?? [],
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
 
   return (
     <div className="flex flex-col gap-6 p-4">
@@ -182,38 +167,13 @@ export default function UserManagementView() {
           <CardTitle>Users</CardTitle>
         </CardHeader>
         <CardContent className="px-0">
-          {usersQuery.isLoading ? (
-            <p className="px-4 text-sm text-muted-foreground">Loading users…</p>
-          ) : !usersQuery.data || usersQuery.data.length === 0 ? (
-            <p className="px-4 text-sm text-muted-foreground">No users yet.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                {table.getHeaderGroups().map(headerGroup => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map(header => (
-                      <TableHead key={header.id}>
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows.map(row => (
-                  <TableRow key={row.id}>
-                    {row.getVisibleCells().map(cell => (
-                      <TableCell key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <DataTable
+            columns={columns as ColumnDef<UserRow>[]}
+            data={usersQuery.data ?? []}
+            isLoading={usersQuery.isLoading}
+            loadingState={<p className="px-4 text-sm text-muted-foreground">Loading users…</p>}
+            emptyState={<p className="px-4 text-sm text-muted-foreground">No users yet.</p>}
+          />
         </CardContent>
       </Card>
     </div>

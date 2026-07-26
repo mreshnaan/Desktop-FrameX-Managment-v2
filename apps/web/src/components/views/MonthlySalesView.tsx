@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  useReactTable,
-  getCoreRowModel,
   createColumnHelper,
-  flexRender,
+  type ColumnDef,
 } from '@tanstack/react-table';
 import {
   WEEKDAYS,
@@ -26,14 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { DataTable } from '@/components/ui/data-table';
 
 interface MonthlySalesViewProps {
   onJumpToDate: (date: string) => void;
@@ -305,12 +296,6 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
     return categoryRows;
   }, [filter, allRows, cafeRows, expensesRows, categoryRows]);
 
-  const table = useReactTable<AnyDayRow>({
-    data: activeTableData,
-    columns: columns as any,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
   function stepMonth(delta: number) {
     setCursor(prev => {
       const d = new Date(prev.year, prev.month + delta, 1);
@@ -416,38 +401,14 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
       {/* Main Breakdown Table */}
       <Card>
         <CardContent className="px-0">
-          {isLoading ? (
-            <p className="px-4 text-sm text-muted-foreground">Loading monthly data…</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                {table.getHeaderGroups().map(headerGroup => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map(header => (
-                      <TableHead key={header.id}>
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows.map(row => (
-                  <TableRow
-                    key={row.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => onJumpToDate(row.original.date)}
-                  >
-                    {row.getVisibleCells().map(cell => (
-                      <TableCell key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <DataTable
+            columns={columns as ColumnDef<AnyDayRow>[]}
+            data={activeTableData}
+            isLoading={isLoading}
+            loadingState={<p className="px-4 text-sm text-muted-foreground">Loading monthly data…</p>}
+            onRowClick={row => onJumpToDate(row.date)}
+            rowClassName="cursor-pointer hover:bg-muted/50"
+          />
         </CardContent>
       </Card>
     </div>

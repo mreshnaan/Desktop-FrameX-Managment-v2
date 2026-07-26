@@ -26,6 +26,9 @@ importers:
       express:
         specifier: ^4.21.0
         version: 4.22.2
+      express-async-errors:
+        specifier: ^3.1.1
+        version: 3.1.1(express@4.22.2)
       jsonwebtoken:
         specifier: ^9.0.2
         version: 9.0.3
@@ -3572,6 +3575,14 @@ packages:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
     dev: true
+
+  /express-async-errors@3.1.1(express@4.22.2):
+    resolution: {integrity: sha512-h6aK1da4tpqWSbyCa3FxB/V6Ehd4EEB15zyQq9qe75OZBp0krinNKuH4rAY+S/U/2I36vdLAUFSjQJ+TFmODng==}
+    peerDependencies:
+      express: ^4.16.2
+    dependencies:
+      express: 4.22.2
+    dev: false
 
   /express-rate-limit@8.6.0(express@5.2.1):
     resolution: {integrity: sha512-XKJXDsASUOo0LLtFwW5hCcQGH0N4WQc/Rn8/Pvoia+TJFOkkFPvrtW9lZOeeNcxQJspvOIERMwiRLsVFlhHEkA==}

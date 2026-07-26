@@ -395,4 +395,14 @@ describe('authenticated routes', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('GET /orders returns 400 (not a hang/crash) for malformed startUtc/endUtc', async () => {
+    const res = await fetch(
+      `${baseUrl}/orders?startUtc=not-a-date&endUtc=also-not-a-date`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    expect(res.status).toBe(400);
+    const body = await json<{ error: string }>(res);
+    expect(body.error).toBe('startUtc and endUtc must be valid ISO datetimes');
+  });
 });

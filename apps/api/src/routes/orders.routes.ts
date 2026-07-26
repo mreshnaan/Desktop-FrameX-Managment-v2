@@ -16,9 +16,15 @@ ordersRouter.get('/', async (req, res) => {
     return res.status(400).json({ error: 'startUtc and endUtc required' });
   }
 
+  const startDate = new Date(startUtc);
+  const endDate = new Date(endUtc);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return res.status(400).json({ error: 'startUtc and endUtc must be valid ISO datetimes' });
+  }
+
   const orders = await prisma.order.findMany({
     where: {
-      updatedAt: { gte: new Date(startUtc), lt: new Date(endUtc) },
+      updatedAt: { gte: startDate, lt: endDate },
       deletedAt: null,
     },
   });

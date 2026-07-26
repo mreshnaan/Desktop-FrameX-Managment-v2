@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
+import { requireView } from '../middleware/requireRole';
 import { prisma } from '../db';
 
 export const ordersRouter = Router();
-ordersRouter.use(authenticate);
+ordersRouter.use(authenticate, requireView('cafe'));
 
 // GET /orders?startUtc=<ISO>&endUtc=<ISO> -- bounded by UTC instant, unlike
 // /sync/pull. Orders have no `date` column; updatedAt is the UTC instant the

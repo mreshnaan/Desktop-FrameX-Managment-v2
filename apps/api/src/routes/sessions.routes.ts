@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
+import { requireView } from '../middleware/requireRole';
 import { prisma } from '../db';
 
 export const sessionsRouter = Router();
-sessionsRouter.use(authenticate);
+sessionsRouter.use(authenticate, requireView('dailySales'));
 
 // GET /sessions?date=YYYY-MM-DD -- bounded to one day, unlike /sync/pull.
 sessionsRouter.get('/', async (req, res) => {

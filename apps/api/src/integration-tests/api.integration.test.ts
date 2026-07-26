@@ -291,6 +291,32 @@ describe('authenticated routes', () => {
     expect(res.status).toBe(400);
   });
 
+  it('GET /sessions excludes soft-deleted sessions', async () => {
+    const station = await prisma.station.findFirstOrThrow({ where: { name: 'Table 1' } });
+    const sessionId = crypto.randomUUID();
+    await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [{
+          table: 'sessions', op: 'upsert', id: sessionId,
+          payload: { id: sessionId, stationId: station.id, date: '2026-07-01', start: '10:00', end: '11:00', amount: 250, method: 'Cash', customerId: null },
+          clientUpdatedAt: new Date().toISOString(),
+        }],
+      }),
+    });
+    await prisma.session.update({ where: { id: sessionId }, data: { deletedAt: new Date() } });
+
+    const res = await fetch(`${baseUrl}/sessions?date=2026-07-01`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.status).toBe(200);
+    const sessions = await json<{ id: string }[]>(res);
+    expect(sessions.some(s => s.id === sessionId)).toBe(false);
+
+    await prisma.session.deleteMany({ where: { id: sessionId } });
+  });
+
   // -------------------------------------------------------------------------
   // GET /expenses
   // -------------------------------------------------------------------------
@@ -335,21 +361,54 @@ describe('authenticated routes', () => {
     expect(res.status).toBe(400);
   });
 
+  it('GET /expenses excludes soft-deleted expenses', async () => {
+    const expenseId = crypto.randomUUID();
+    await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [{
+          table: 'expenses', op: 'upsert', id: expenseId,
+          payload: { id: expenseId, date: '2026-07-01', description: 'E2E soft-deleted', amount: 50, method: 'Cash' },
+          clientUpdatedAt: new Date().toISOString(),
+        }],
+      }),
+    });
+    await prisma.expense.update({ where: { id: expenseId }, data: { deletedAt: new Date() } });
+
+    const res = await fetch(`${baseUrl}/expenses?date=2026-07-01`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.status).toBe(200);
+    const expenses = await json<{ id: string }[]>(res);
+    expect(expenses.some(e => e.id === expenseId)).toBe(false);
+
+    await prisma.expense.deleteMany({ where: { id: expenseId } });
+  });
+
   // -------------------------------------------------------------------------
   // GET /orders
   // -------------------------------------------------------------------------
   it('GET /orders returns only orders within the UTC bounds, with their items', async () => {
-    const product = await prisma.product.findFirst();
+    // Pushes its own category/product rather than relying on findFirst() --
+    // a previous version of this test skipped the item assertion entirely
+    // when no product existed in the DB.
+    const categoryId = crypto.randomUUID();
+    const productId = crypto.randomUUID();
     const inRangeId = crypto.randomUUID();
     const outOfRangeId = crypto.randomUUID();
+    const itemId = crypto.randomUUID();
 
     await fetch(`${baseUrl}/sync/push`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
       body: JSON.stringify({
         entries: [
+          { table: 'productCategories', op: 'upsert', id: categoryId, payload: { id: categoryId, name: 'E2E Integration Category' }, clientUpdatedAt: new Date().toISOString() },
+          { table: 'products', op: 'upsert', id: productId, payload: { id: productId, categoryId, name: 'E2E Integration Product', price: 50, cost: null, stockQty: 0, lowStockThreshold: 0, barcode: null, active: true }, clientUpdatedAt: new Date().toISOString() },
           { table: 'orders', op: 'upsert', id: inRangeId, payload: { id: inRangeId, method: 'Cash', total: 100, customerId: null }, clientUpdatedAt: new Date().toISOString() },
           { table: 'orders', op: 'upsert', id: outOfRangeId, payload: { id: outOfRangeId, method: 'Cash', total: 200, customerId: null }, clientUpdatedAt: new Date().toISOString() },
+          { table: 'orderItems', op: 'upsert', id: itemId, payload: { id: itemId, orderId: inRangeId, productId, qty: 2, unitPrice: 50, lineTotal: 100 }, clientUpdatedAt: new Date().toISOString() },
         ],
       }),
     });
@@ -360,21 +419,6 @@ describe('authenticated routes', () => {
     await prisma.order.update({ where: { id: inRangeId }, data: { updatedAt: new Date('2026-07-01T10:00:00.000Z') } });
     await prisma.order.update({ where: { id: outOfRangeId }, data: { updatedAt: new Date('2026-07-02T10:00:00.000Z') } });
 
-    if (product) {
-      const itemId = crypto.randomUUID();
-      await fetch(`${baseUrl}/sync/push`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({
-          entries: [{
-            table: 'orderItems', op: 'upsert', id: itemId,
-            payload: { id: itemId, orderId: inRangeId, productId: product.id, qty: 2, unitPrice: 50, lineTotal: 100 },
-            clientUpdatedAt: new Date().toISOString(),
-          }],
-        }),
-      });
-    }
-
     const res = await fetch(
       `${baseUrl}/orders?startUtc=2026-07-01T00:00:00.000Z&endUtc=2026-07-02T00:00:00.000Z`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
@@ -383,10 +427,35 @@ describe('authenticated routes', () => {
     const body = await json<{ orders: { id: string }[]; orderItems: { orderId: string }[] }>(res);
     expect(body.orders.some(o => o.id === inRangeId)).toBe(true);
     expect(body.orders.some(o => o.id === outOfRangeId)).toBe(false);
+    expect(body.orderItems.length).toBeGreaterThan(0);
     expect(body.orderItems.every(i => i.orderId === inRangeId)).toBe(true);
 
     await prisma.orderItem.deleteMany({ where: { orderId: { in: [inRangeId, outOfRangeId] } } });
     await prisma.order.deleteMany({ where: { id: { in: [inRangeId, outOfRangeId] } } });
+    await prisma.product.deleteMany({ where: { id: productId } });
+    await prisma.productCategory.deleteMany({ where: { id: categoryId } });
+  });
+
+  it('GET /orders excludes soft-deleted orders', async () => {
+    const orderId = crypto.randomUUID();
+    await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [{ table: 'orders', op: 'upsert', id: orderId, payload: { id: orderId, method: 'Cash', total: 100, customerId: null }, clientUpdatedAt: new Date().toISOString() }],
+      }),
+    });
+    await prisma.order.update({ where: { id: orderId }, data: { updatedAt: new Date('2026-07-01T10:00:00.000Z'), deletedAt: new Date() } });
+
+    const res = await fetch(
+      `${baseUrl}/orders?startUtc=2026-07-01T00:00:00.000Z&endUtc=2026-07-02T00:00:00.000Z`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    expect(res.status).toBe(200);
+    const body = await json<{ orders: { id: string }[] }>(res);
+    expect(body.orders.some(o => o.id === orderId)).toBe(false);
+
+    await prisma.order.deleteMany({ where: { id: orderId } });
   });
 
   it('GET /orders returns 400 when startUtc/endUtc are missing', async () => {
@@ -404,5 +473,35 @@ describe('authenticated routes', () => {
     expect(res.status).toBe(400);
     const body = await json<{ error: string }>(res);
     expect(body.error).toBe('startUtc and endUtc must be valid ISO datetimes');
+  });
+
+  // -------------------------------------------------------------------------
+  // requireView wiring on the three new routes
+  // -------------------------------------------------------------------------
+  it('GET /sessions, /expenses, /orders all reject a token with none of the matching permissions', async () => {
+    const role = await prisma.role.create({ data: { name: 'E2E No Permissions Role' } });
+    const pinHash = await bcrypt.hash('9999', 12);
+    const user = await prisma.user.create({
+      data: { username: 'e2e-no-permissions', pinHash, name: 'E2E No Permissions', roleId: role.id },
+    });
+
+    const loginRes = await fetch(`${baseUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'e2e-no-permissions', pin: '9999' }),
+    });
+    const { accessToken: restrictedToken } = await json<{ accessToken: string }>(loginRes);
+
+    const [sessionsRes, expensesRes, ordersRes] = await Promise.all([
+      fetch(`${baseUrl}/sessions?date=2026-07-01`, { headers: { Authorization: `Bearer ${restrictedToken}` } }),
+      fetch(`${baseUrl}/expenses?date=2026-07-01`, { headers: { Authorization: `Bearer ${restrictedToken}` } }),
+      fetch(`${baseUrl}/orders?startUtc=2026-07-01T00:00:00.000Z&endUtc=2026-07-02T00:00:00.000Z`, { headers: { Authorization: `Bearer ${restrictedToken}` } }),
+    ]);
+    expect(sessionsRes.status).toBe(403);
+    expect(expensesRes.status).toBe(403);
+    expect(ordersRes.status).toBe(403);
+
+    await prisma.user.deleteMany({ where: { id: user.id } });
+    await prisma.role.deleteMany({ where: { id: role.id } });
   });
 });

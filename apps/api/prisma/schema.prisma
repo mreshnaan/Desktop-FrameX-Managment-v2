@@ -314,6 +314,7 @@ model Order {
   items OrderItem[]
 
   @@index([customerId])
+  @@index([updatedAt])
 }
 
 model OrderItem {

@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react';
-import { formatCurrency } from '@/lib/shared';
-import { usePullData } from '@/lib/hooks/usePullData';
+import { useQuery } from '@tanstack/react-query';
+import { formatCurrency, localDateRangeToUtc, todayStr } from '@/lib/shared';
+import { useAuth } from '@/lib/auth/useAuth';
+import { apiFetch } from '@/lib/api/client';
+import { usePullData, type OrderRow, type OrderItemRow } from '@/lib/hooks/usePullData';
+import DateStepper from '@/components/layout/DateStepper';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -16,11 +20,13 @@ function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
-// Read-only, like the rest of web's dashboard views -- fetches straight
-// from /sync/pull, the same data desktop's Cafe/Products & Stock screens
-// write.
+// Read-only, like the rest of web's dashboard views. Products & Stock still
+// reads the full catalog via /sync/pull (no date dimension applies to a
+// product catalog); Orders is bounded to one day via GET /orders, since an
+// order list otherwise grows unbounded forever (see the design doc).
 export default function CafeView() {
   const [tab, setTab] = useState<'products' | 'orders'>('products');
+  const [date, setDate] = useState(todayStr());
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -32,7 +38,8 @@ export default function CafeView() {
           Orders
         </Button>
       </div>
-      {tab === 'products' ? <ProductsTable /> : <OrdersTable />}
+      {tab === 'orders' && <DateStepper date={date} onDateChange={setDate} />}
+      {tab === 'products' ? <ProductsTable /> : <OrdersTable date={date} />}
     </div>
   );
 }
@@ -90,8 +97,23 @@ function ProductsTable() {
   );
 }
 
-function OrdersTable() {
-  const query = usePullData();
+function useOrdersForDate(date: string) {
+  const { state } = useAuth();
+  const { startUtc, endUtc } = localDateRangeToUtc(date, date);
+
+  return useQuery({
+    queryKey: ['orders', date],
+    queryFn: () =>
+      apiFetch<{ orders: OrderRow[]; orderItems: OrderItemRow[] }>(
+        `/orders?startUtc=${encodeURIComponent(startUtc)}&endUtc=${encodeURIComponent(endUtc)}`,
+        { accessToken: state.accessToken },
+      ),
+    enabled: !!state.accessToken,
+  });
+}
+
+function OrdersTable({ date }: { date: string }) {
+  const query = useOrdersForDate(date);
 
   const rows = useMemo(() => {
     if (!query.data) return [];
@@ -114,7 +136,7 @@ function OrdersTable() {
         {query.isLoading ? (
           <p className="px-4 text-sm text-muted-foreground">Loading…</p>
         ) : rows.length === 0 ? (
-          <p className="px-4 text-sm text-muted-foreground">No orders yet.</p>
+          <p className="px-4 text-sm text-muted-foreground">No orders for this day.</p>
         ) : (
           <Table>
             <TableHeader>

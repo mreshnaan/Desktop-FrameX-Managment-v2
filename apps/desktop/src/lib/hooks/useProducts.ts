@@ -7,8 +7,10 @@ export function useProducts() {
   const productsQuery = useQuery({ queryKey: ['products'], queryFn: () => commands.listProducts() });
 
   function invalidate() {
-    qc.invalidateQueries({ queryKey: ['product-categories'] });
-    qc.invalidateQueries({ queryKey: ['products'] });
+    return Promise.all([
+      qc.invalidateQueries({ queryKey: ['product-categories'] }),
+      qc.invalidateQueries({ queryKey: ['products'] }),
+    ]);
   }
 
   const addCategory = useMutation({

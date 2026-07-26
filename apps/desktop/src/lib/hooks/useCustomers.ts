@@ -24,18 +24,18 @@ export function useCustomers() {
   const addCustomer = useMutation({
     mutationFn: (input: { name: string; phone?: string }) =>
       commands.createCustomer(input.name, input.phone ?? ''),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['customers'] });
-      qc.invalidateQueries({ queryKey: ['customer-balances'] });
-    },
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['customers'] }),
+      qc.invalidateQueries({ queryKey: ['customer-balances'] }),
+    ]),
   });
 
   const deleteCustomer = useMutation({
     mutationFn: (id: string) => commands.deleteCustomer(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['customers'] });
-      qc.invalidateQueries({ queryKey: ['customer-balances'] });
-    },
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['customers'] }),
+      qc.invalidateQueries({ queryKey: ['customer-balances'] }),
+    ]),
   });
 
   const adjustCustomer = useMutation({
@@ -45,10 +45,10 @@ export function useCustomers() {
       type: 'CREDIT_GIVEN' | 'PAYMENT_RECEIVED';
       amount: number;
     }) => commands.createCreditEntry(input.customerId, input.date, input.type, input.amount),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['credit-entries'] });
-      qc.invalidateQueries({ queryKey: ['customer-balances'] });
-    },
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['credit-entries'] }),
+      qc.invalidateQueries({ queryKey: ['customer-balances'] }),
+    ]),
   });
 
   const balances: Record<string, number> = balancesQuery.data ?? {};

@@ -24,11 +24,11 @@ export function useOrders() {
   const checkout = useMutation({
     mutationFn: (input: { items: CartItemInput[]; method: string; customerId: string | null }) =>
       commands.createOrder(input.items, input.method, input.customerId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['orders'] });
-      qc.invalidateQueries({ queryKey: ['order-items'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
-    },
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['orders'] }),
+      qc.invalidateQueries({ queryKey: ['order-items'] }),
+      qc.invalidateQueries({ queryKey: ['products'] }),
+    ]),
   });
 
   return { checkout };

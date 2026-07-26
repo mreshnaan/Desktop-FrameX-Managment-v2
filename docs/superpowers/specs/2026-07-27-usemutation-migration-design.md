@@ -131,7 +131,11 @@ Confirmed during scoping: desktop views split three ways today —
 
 After this sub-project, every mutation-triggering component reads
 `.isPending`/`.isError`/`.error` from its mutation object instead of managing its own
-local state for that purpose. `ExpensesView.tsx`/`DailySalesView.tsx`'s
+local state for that purpose. Exception: `ProductManagementView.tsx`'s child
+components `NewCategoryCard`/`NewProductCard` keep their pre-existing local
+`submitting`/`error` `useState` and were deliberately not touched — the plan itself
+required not modifying children that consume mutations via wrapper closures (Tasks 2,
+3, 6), and these two are exactly that case. `ExpensesView.tsx`/`DailySalesView.tsx`'s
 blur-to-save `commit()` helpers keep their local `error` state **only** for
 client-side zod validation failures caught before the mutation is even called (that's
 a different concern — invalid input never reaching the network — and is out of

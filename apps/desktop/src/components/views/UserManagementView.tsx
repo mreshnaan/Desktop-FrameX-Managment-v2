@@ -72,9 +72,8 @@ export default function UserManagementView() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 
-  async function onSubmit(data: CreateUserInput) {
-    await createUser.mutateAsync(data);
-    reset();
+  function onSubmit(data: CreateUserInput) {
+    createUser.mutate(data, { onSuccess: () => reset() });
   }
 
   return (

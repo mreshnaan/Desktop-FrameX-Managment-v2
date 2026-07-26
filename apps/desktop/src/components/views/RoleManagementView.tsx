@@ -104,15 +104,21 @@ function NewRoleCard({ onCreated }: { onCreated: () => void }) {
     });
   }
 
-  async function submit() {
+  function submit() {
     if (!name.trim()) return;
     const permissionIds = (permissionsQuery.data ?? [])
       .filter(p => selected.has(p.key))
       .map(p => p.id);
-    await createRole.mutateAsync({ name: name.trim(), permissionIds });
-    setName('');
-    setSelected(new Set());
-    onCreated();
+    createRole.mutate(
+      { name: name.trim(), permissionIds },
+      {
+        onSuccess: () => {
+          setName('');
+          setSelected(new Set());
+          onCreated();
+        },
+      },
+    );
   }
 
   return (
@@ -164,17 +170,15 @@ function RoleCard({ role, onChanged }: { role: RoleRow; onChanged: () => void })
     });
   }
 
-  async function save() {
+  function save() {
     const permissionIds = (permissionsQuery.data ?? [])
       .filter(p => selected.has(p.key))
       .map(p => p.id);
-    await updateRole.mutateAsync({ name: name.trim(), permissionIds });
-    onChanged();
+    updateRole.mutate({ name: name.trim(), permissionIds }, { onSuccess: () => onChanged() });
   }
 
-  async function remove() {
-    await deleteRole.mutateAsync();
-    onChanged();
+  function remove() {
+    deleteRole.mutate(undefined, { onSuccess: () => onChanged() });
   }
 
   return (
@@ -196,9 +200,6 @@ function RoleCard({ role, onChanged }: { role: RoleRow; onChanged: () => void })
           />
         </Field>
         <PermissionCheckboxes selected={selected} onChange={toggle} disabled={role.isSystem} />
-        {(updateRole.error || deleteRole.error) && (
-          <p className="text-sm text-destructive">{(updateRole.error ?? deleteRole.error)?.message}</p>
-        )}
         {!role.isSystem && (
           <div className="flex gap-2">
             <Button type="button" size="sm" onClick={save} disabled={updateRole.isPending}>
@@ -209,6 +210,8 @@ function RoleCard({ role, onChanged }: { role: RoleRow; onChanged: () => void })
             </Button>
           </div>
         )}
+        {updateRole.error && <p className="text-sm text-destructive">{updateRole.error.message}</p>}
+        {deleteRole.error && <p className="text-sm text-destructive">{deleteRole.error.message}</p>}
       </CardContent>
     </Card>
   );

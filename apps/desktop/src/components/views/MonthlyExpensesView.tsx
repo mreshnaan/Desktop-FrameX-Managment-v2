@@ -1,23 +1,11 @@
 import { useMemo, useState } from 'react';
-import {
-  useReactTable,
-  getCoreRowModel,
-  createColumnHelper,
-  flexRender,
-} from '@tanstack/react-table';
+import { createColumnHelper, type ColumnDef } from '@tanstack/react-table';
 import { WEEKDAYS, MONTHS, dateStrOf, parseDate, formatCurrency } from '@/lib/shared';
 import { useExpensesBetween } from '@/lib/hooks/useExpenses';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { DataTable } from '@/components/ui/data-table';
 
 interface MonthlyExpensesViewProps {
   onJumpToDate: (date: string) => void;
@@ -76,12 +64,6 @@ export default function MonthlyExpensesView({ onJumpToDate }: MonthlyExpensesVie
 
   const monthTotal = useMemo(() => expenses.reduce((sum, e) => sum + e.amount, 0), [expenses]);
 
-  const table = useReactTable({
-    data: rows,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
   function stepMonth(delta: number) {
     setCursor(prev => {
       const d = new Date(prev.year, prev.month + delta, 1);
@@ -123,38 +105,14 @@ export default function MonthlyExpensesView({ onJumpToDate }: MonthlyExpensesVie
 
       <Card>
         <CardContent className="px-0">
-          {isLoading ? (
-            <ListSkeleton />
-          ) : (
-            <Table>
-              <TableHeader>
-                {table.getHeaderGroups().map(headerGroup => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map(header => (
-                      <TableHead key={header.id}>
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows.map(row => (
-                  <TableRow
-                    key={row.id}
-                    className="cursor-pointer"
-                    onClick={() => onJumpToDate(row.original.date)}
-                  >
-                    {row.getVisibleCells().map(cell => (
-                      <TableCell key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <DataTable
+            columns={columns as ColumnDef<DayRow>[]}
+            data={rows}
+            isLoading={isLoading}
+            loadingState={<ListSkeleton />}
+            onRowClick={row => onJumpToDate(row.date)}
+            rowClassName="cursor-pointer"
+          />
         </CardContent>
       </Card>
     </div>

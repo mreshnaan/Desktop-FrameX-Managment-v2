@@ -24,7 +24,11 @@ export default function ProductManagementView() {
         <ListSkeleton />
       ) : (
         categories.map(category => {
-          const items = productsByCategoryId.get(category.id) ?? [];
+          // Active products first (each half still in the backend's name
+          // order), matching the original active-then-inactive layout.
+          const items = (productsByCategoryId.get(category.id) ?? [])
+            .slice()
+            .sort((a, b) => Number(b.active) - Number(a.active));
           if (items.length === 0) return null;
           return (
             <Card key={category.id}>

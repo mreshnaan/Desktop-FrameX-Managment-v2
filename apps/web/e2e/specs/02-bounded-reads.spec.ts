@@ -49,8 +49,12 @@ test("Daily Sales, Expenses, and Cafe's Orders tab show today's bounded data", a
   const pullRes = await fetch(`${API_BASE}/sync/pull`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  const { stations } = (await pullRes.json()) as { stations: { id: string; name: string }[] };
-  const station = stations.find(s => s.name === 'Table 1')!;
+  const { categories, stations } = (await pullRes.json()) as {
+    categories: { id: string; name: string }[];
+    stations: { id: string; categoryId: string; name: string }[];
+  };
+  const eightBallCategory = categories.find(c => c.name === '8-Ball')!;
+  const station = stations.find(s => s.categoryId === eightBallCategory.id && s.name === 'Table 1')!;
 
   const sessionId = crypto.randomUUID();
   await pushEntry(accessToken, 'sessions', sessionId, {

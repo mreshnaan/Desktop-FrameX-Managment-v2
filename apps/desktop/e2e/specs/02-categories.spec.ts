@@ -23,17 +23,10 @@ test('an admin can create a category and station, and it immediately appears in 
   await categoryCard.getByPlaceholder('New station name').fill('E2E Dartboard');
   await categoryCard.getByRole('button', { name: '+ Add station' }).click();
 
-  // getByDisplayValue is a Testing Library API, not Playwright's -- the
-  // station's name lives in an input's value, so assert with toHaveValue()
-  // on the (now-rendered) rename input for the station we just created.
-  // exact: true -- an unanchored match also hits the "New station name"
-  // input (a substring of it), which resets to empty after creation.
+  // exact: true -- an unanchored match also hits the "New station name" input.
   await expect(categoryCard.getByLabel('Station name', { exact: true }).last()).toHaveValue('E2E Dartboard');
 
-  // Prove this actually synced through the real relational write path (not
-  // just local UI state) by confirming the new category shows up on Daily
-  // Sales, which reads from the same categories/stations tables via
-  // useCategories().
+  // Confirms this synced through the real write path, not just local UI state.
   await navigateTo(page, 'Daily Sales');
   await expect(page.getByRole('heading', { name: 'E2E Bar Games' })).toBeVisible();
   await expect(page.getByTestId('resource-card-E2E Bar Games-E2E Dartboard')).toBeVisible();

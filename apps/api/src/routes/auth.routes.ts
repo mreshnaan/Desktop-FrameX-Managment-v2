@@ -14,11 +14,8 @@ authRouter.post('/login', async (req, res) => {
     const result = await login(parsed.data.username, parsed.data.pin);
     res.json(result);
   } catch (err) {
-    // login() only throws this exact message for a genuine auth failure (unknown
-    // username or wrong PIN) -- see auth.service.ts. Anything else (DB outage,
-    // an unexpected exception, etc.) is a real infrastructure problem and must
-    // not be reported to the client as "your credentials are wrong". We log it
-    // server-side and return 500 without leaking internal error details.
+    // Only this exact message means a genuine auth failure -- anything else
+    // is an infrastructure problem, logged server-side and returned as 500.
     if (err instanceof Error && err.message === 'Invalid credentials') {
       res.status(401).json({ error: 'Invalid credentials' });
       return;

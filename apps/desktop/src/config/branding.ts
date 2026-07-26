@@ -1,7 +1,5 @@
-// Config-driven branding/theme, matching FrameX's config/branding.ts pattern
-// and exact token values -- swap `logo`/`theme` here to re-skin the app
-// without touching component code. See src/theme/applyTheme.ts for how
-// these tokens reach the DOM.
+// Single source of truth for branding/theme -- swap values here to re-skin
+// the app. See src/theme/applyTheme.ts for how tokens reach the DOM.
 
 export interface ThemeTokens {
   background: string; foreground: string;

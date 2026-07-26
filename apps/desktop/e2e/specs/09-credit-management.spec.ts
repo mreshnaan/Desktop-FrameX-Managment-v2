@@ -1,10 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { connectToApp, login, navigateTo } from '../helpers';
 
-// Tests for the Credit Management view:
-//   - Customer balance is pre-aggregated in SQLite (get_customer_balances)
-//   - Per-customer credit history is lazy-fetched from the DB (get_customer_credit_history)
-//   - Balance shown in the card reflects give-credit and record-payment actions
+// Covers Credit Management's backend-aggregated balance (get_customer_balances)
+// and lazy-fetched history (get_customer_credit_history).
 test.describe.serial('credit management', () => {
   const CUSTOMER = 'E2E Credit Customer';
 

@@ -11,17 +11,14 @@ export interface CustomerHistoryRow {
   direction: 'charge' | 'payment';
 }
 
-// Read-only: Web displays customer credit balances from /reports/customer-balances.
-// The endpoint returns a plain { customerId: balance } object — the frontend
-// does ZERO computation. balanceFor is a direct property lookup.
+// Read-only: balances come from /reports/customer-balances as a plain
+// { customerId: balance } object -- balanceFor is a direct lookup.
 export function useCustomers() {
   const { state } = useAuth();
   const pullQuery = usePullData();
 
   const customers = (pullQuery.data?.customers ?? []).filter(c => !c.deletedAt);
 
-  // Backend returns Record<string, number> — a plain {id: balance} object.
-  // No .map(), no .reduce(), no .filter() ever runs in the browser.
   const balancesQuery = useQuery({
     queryKey: ['customer-balances'],
     queryFn: () =>
@@ -44,8 +41,7 @@ export function useCustomers() {
   };
 }
 
-// Separate hook: only fetched when the user expands the history panel
-// for a specific customer. Scoped to one customer_id — no full scan.
+// Only fetched when the user expands a customer's history panel.
 export function useCustomerCreditHistory(customerId: string, enabled: boolean) {
   const { state } = useAuth();
 

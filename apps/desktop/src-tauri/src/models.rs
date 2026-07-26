@@ -1,11 +1,8 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-// #[serde(rename_all = "camelCase")] keeps the JSON wire format sent to the
-// TS frontend consistent with the rest of the app (apps/api's Prisma output,
-// apps/web's zod schemas) while sqlx's FromRow -- a separate derive,
-// unaffected by serde attributes -- still maps by the snake_case Rust field
-// names that match the SQLite column names in migrations/0001_init.sql.
+// #[serde(rename_all = "camelCase")] keeps the JSON wire format camelCase for
+// the frontend; sqlx's FromRow is unaffected and still maps snake_case columns.
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 #[serde(rename_all = "camelCase")]

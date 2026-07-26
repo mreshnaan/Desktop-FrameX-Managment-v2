@@ -15,15 +15,9 @@ pub struct CartItemInput {
     pub qty: i64,
 }
 
-// The cafe checkout: validates every line against live stock/active status,
-// decrements stock, and writes order + order_items + stock_movements in one
-// transaction -- if any product is unavailable or understocked, nothing is
-// written (no partial sale: an early `return Err` drops `tx` without
-// committing, and sqlx rolls back an uncommitted transaction on drop).
-// Each affected row gets its own outbox entry, enqueued in dependency order
-// (products/stock movements, then the order, then its items) so a later
-// push never violates a foreign key on the server. Credit orders require a
-// customerId, same rule as Credit sessions.
+// Cafe checkout: validates stock/active status, decrements stock, and writes
+// order + order_items + stock_movements in one transaction -- an early
+// `return Err` drops `tx` uncommitted, so a failed line leaves no partial sale.
 pub(crate) async fn do_create_order(
     pool: &SqlitePool,
     items: Vec<CartItemInput>,
@@ -42,9 +36,7 @@ pub(crate) async fn do_create_order(
     let now = crate::time::now_iso();
     let order_id = Uuid::new_v4().to_string();
 
-    // Pass 1: validate every line and fetch the products, without writing
-    // anything yet -- this is also what makes the total available before
-    // the order row is inserted.
+    // Pass 1: validate every line and compute the total before inserting anything.
     let mut validated: Vec<(Product, i64, i64)> = Vec::new(); // (product, qty, line_total)
     let mut total: i64 = 0;
     for item in &items {
@@ -72,9 +64,7 @@ pub(crate) async fn do_create_order(
         validated.push((product, item.qty, line_total));
     }
 
-    // Pass 2: the order row must exist before any order_items row that
-    // references it (order_items.order_id has a FK on orders.id) -- insert
-    // it first, using the total computed in pass 1.
+    // Pass 2: insert the order first -- order_items has a FK on orders.id.
     sqlx::query("INSERT INTO orders (id, method, total, customer_id, updated_at, deleted_at, created_by) VALUES (?, ?, ?, ?, ?, NULL, ?)")
         .bind(&order_id)
         .bind(&method)
@@ -103,8 +93,7 @@ pub(crate) async fn do_create_order(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Pass 3: now that the order exists, decrement stock and write each
-    // item + its stock movement + its order_item row.
+    // Pass 3: decrement stock and write each item + its stock movement.
     let mut order_items: Vec<OrderItem> = Vec::new();
     for (product, qty, line_total) in validated {
         let new_stock_qty = product.stock_qty - qty;
@@ -202,13 +191,9 @@ pub async fn list_all_orders(pool: State<'_, SqlitePool>) -> Result<Vec<Order>, 
     do_list_all_orders(pool.inner()).await
 }
 
-// Orders have no separate `date` column like sessions do -- updated_at IS the
-// instant the order belongs to, stamped in UTC (see create_order's comment
-// and now_iso()). Date-range filtering therefore takes UTC instant bounds
-// (start_utc inclusive, end_utc exclusive) rather than a local calendar-date
-// string: the frontend converts its local [startDate, endDate] range into
-// these UTC instants via localDateRangeToUtc() before calling this command,
-// so the comparison is exact regardless of the machine's timezone offset.
+// Orders have no local `date` column -- updated_at is a UTC instant, so the
+// frontend passes UTC bounds (via localDateRangeToUtc()) rather than a local
+// calendar-date string, keeping this exact regardless of timezone.
 pub(crate) async fn do_list_orders_between(
     pool: &SqlitePool,
     start_utc: &str,
@@ -235,12 +220,8 @@ pub async fn list_orders_between(
     do_list_orders_between(pool.inner(), &start_utc, &end_utc).await
 }
 
-// Order items have no deleted_at of their own -- an order is append-only
-// (see do_create_order's comment), so filtering by the parent order's
-// deleted_at is the only soft-delete boundary that applies. Bounded by the
-// same UTC instant range as list_orders_between, via a join on the parent
-// order, rather than shipping every order item ever created to compute a
-// single day's or month's cafe profit.
+// Order items have no deleted_at of their own -- filtered via the parent
+// order's deleted_at and the same UTC bounds as list_orders_between.
 pub(crate) async fn do_list_order_items_between(
     pool: &SqlitePool,
     start_utc: &str,
@@ -502,12 +483,8 @@ mod tests {
         assert_eq!(results[0].id, in_range.order.id);
     }
 
-    // Regression test for the UTC-vs-local timezone bug: an order stamped
-    // just after local midnight in a timezone ahead of UTC (e.g. UTC+5:30 --
-    // local 00:00-05:29 is still "yesterday" in UTC) must still be included
-    // when the frontend converts that local day into its true UTC instant
-    // bounds via localDateRangeToUtc(). Simulates a local date of 2026-06-16
-    // in UTC+5:30, whose UTC start boundary is 2026-06-15T18:30:00.000Z.
+    // Regression: an order stamped just after local midnight in UTC+5:30
+    // (still "yesterday" in UTC) must still be included in that local day.
     #[tokio::test]
     async fn list_orders_between_includes_an_order_stamped_just_after_local_midnight_ahead_of_utc() {
         let pool = setup_test_db().await;

@@ -10,9 +10,7 @@ interface PinInputProps {
 }
 
 // A 4-digit PIN entry: a visually hidden numeric input captures keystrokes
-// (so it works with a physical keyboard, a barcode-scanner-style numeric
-// pad, or an on-screen keyboard) while 4 dot indicators show progress --
-// matches FrameX's PinKeypad component.
+// while 4 dot indicators show progress.
 export function PinInput({ value, onChange, id, autoFocus, ...rest }: PinInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 

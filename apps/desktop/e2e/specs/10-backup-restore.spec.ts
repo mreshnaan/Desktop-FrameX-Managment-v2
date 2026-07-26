@@ -2,11 +2,8 @@ import { test, expect } from '@playwright/test';
 import { connectToApp, login, navigateTo } from '../helpers';
 import { branding } from '../../src/config/branding';
 
-// Runs last (see the 10- prefix / playwright.config.ts's serial workers):
-// restore_backup closes the app's SQLite connection pool as part of
-// swapping the database file, so the app is intentionally left unusable
-// until a real restart -- nothing after this spec should assume the app is
-// still interactive.
+// Runs last -- restore_backup closes the app's SQLite pool, leaving it
+// unusable until a real restart.
 test('an admin can back up the database and then restore from that backup', async () => {
   const page = await connectToApp();
   await login(page);
@@ -14,10 +11,7 @@ test('an admin can back up the database and then restore from that backup', asyn
   await navigateTo(page, 'Backup & Restore');
   await page.getByRole('button', { name: 'Back up now' }).click();
 
-  // Derived from branding.ts rather than a second hardcoded literal --
-  // src-tauri/src/branding.rs's APP_SHORT_NAME must still be kept equal to
-  // this lowercased, since Rust and this TS test can't share one literal
-  // across the language boundary.
+  // Must match src-tauri/src/branding.rs's APP_SHORT_NAME, lowercased.
   const prefix = `${branding.appShortName.toLowerCase()}-backup-`;
   await expect(page.getByText(new RegExp(`Backup created: ${prefix}`))).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(new RegExp(`${prefix}.*\\.sqlite`)).first()).toBeVisible();

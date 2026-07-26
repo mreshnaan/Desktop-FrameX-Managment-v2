@@ -7,10 +7,8 @@ use tauri::{AppHandle, Manager, State};
 
 const KEEP_BACKUPS: usize = 30;
 
-// Every function below takes a plain `&Path`/`&SqlitePool` instead of
-// deriving the backup directory from Tauri's `AppHandle` internally -- that
-// split is what makes this module testable with `tempfile::tempdir()`
-// (AppHandle isn't constructible outside a running app). The
+// Functions below take a plain `&Path`/`&SqlitePool` rather than an
+// `AppHandle` so they're testable with `tempfile::tempdir()`; the
 // `#[tauri::command]` wrappers resolve the real paths and delegate.
 
 fn app_backup_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
@@ -131,13 +129,9 @@ pub(crate) async fn do_restore_backup(
 ) -> Result<(), String> {
     let backup_path = resolve_backup_path(dir, filename)?;
 
-    // Integrity check before touching the live database. Built via
-    // SqliteConnectOptions::filename() rather than a hand-formatted
-    // "sqlite://{path}" string -- resolve_backup_path canonicalizes its
-    // result, and on Windows a canonicalized path carries the `\\?\`
-    // extended-length prefix, which a naive URL string breaks on (the
-    // leading backslashes get parsed as query syntax). The options builder
-    // takes a Path directly and sidesteps that entirely.
+    // Integrity check before touching the live database. Uses
+    // SqliteConnectOptions::filename() (not a "sqlite://{path}" string) since
+    // canonicalized paths carry Windows' `\\?\` prefix, which a URL string breaks on.
     let backup_pool = SqlitePool::connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(&backup_path))
         .await
         .map_err(|e| e.to_string())?;
@@ -158,8 +152,7 @@ pub(crate) async fn do_restore_backup(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Closes this connection pool -- the swapped-in file only takes effect
-    // after the app restarts (the frontend must tell the user to restart).
+    // The swapped-in file only takes effect after the app restarts.
     pool.close().await;
     fs::copy(&backup_path, db_path).map_err(|e| e.to_string())?;
 
@@ -178,9 +171,7 @@ pub async fn restore_backup(
         .app_data_dir()
         .map_err(|e| e.to_string())?
         .join("cue-room.sqlite");
-    // pool.inner().clone() -- State can't be moved out, but SqlitePool
-    // itself is a cheap Arc-backed handle, so cloning it is the intended way
-    // to hand ownership to a function that needs to close it.
+    // State can't be moved out, but SqlitePool is a cheap Arc handle to clone.
     do_restore_backup(pool.inner().clone(), &dir, &db_path, &filename).await
 }
 

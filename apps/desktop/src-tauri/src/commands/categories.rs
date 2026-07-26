@@ -18,12 +18,9 @@ pub async fn list_categories(pool: State<'_, SqlitePool>) -> Result<Vec<Category
     do_list_categories(pool.inner()).await
 }
 
-// Category/station writes are admin-only in the UI (gated by the
-// 'categoryManagement' permission) but, unlike every other domain here,
-// categories/stations have no updated_at column locally (see the desktop
-// design spec) -- the outbox payload still needs an updatedAt for
-// apps/api's last-write-wins comparison on other tables, so we stamp one at
-// push time without persisting it locally.
+// Categories/stations have no updated_at column locally, but the outbox
+// payload still needs one for apps/api's last-write-wins comparison --
+// stamped at push time without persisting it locally.
 pub(crate) async fn do_create_category(
     pool: &SqlitePool,
     name: String,
@@ -105,12 +102,8 @@ pub async fn update_category(
     do_update_category(pool.inner(), id, name, billing_type).await
 }
 
-// No delete command: categories/stations have no soft-delete column
-// (deleted_at) locally or on apps/api, and every session/rate references
-// them by FK -- deleting one would either orphan history or require a much
-// larger cascade/reassignment flow that's out of scope here. Renaming
-// (update_category/update_station) covers the realistic "we misnamed this"
-// case.
+// No delete command: no soft-delete column, and sessions/rates reference
+// these by FK. Renaming covers the realistic "we misnamed this" case.
 
 #[cfg(test)]
 mod tests {

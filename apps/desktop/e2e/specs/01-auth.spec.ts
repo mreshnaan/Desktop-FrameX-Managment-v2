@@ -1,10 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { connectToApp, login } from '../helpers';
 
-// Both cases share the one running app instance (see helpers.ts), so this
-// runs the failure case first -- an authenticated session must not leak
-// into it -- then logs in for real and logs back out, leaving the app at
-// the login screen for whichever spec file runs next.
+// Runs the failure case first (no session to leak in), then logs in and back
+// out, leaving the app at the login screen for the next spec.
 test('rejects a wrong PIN with an inline error and does not enter the app', async () => {
   const page = await connectToApp();
 

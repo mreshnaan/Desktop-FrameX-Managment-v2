@@ -17,12 +17,9 @@ function injectAppTitle(): Plugin {
 }
 
 // https://vite.dev/config/
-// NOTE: The `/// <reference types="vitest/config" />` directive above enables
-// the `test` key to type-check under `tsc --noEmit`, but NOT under `tsc -b`
-// (composite mode used by the build script). Importing defineConfig from
-// 'vitest/config' fails due to vite version conflict (vitest bundles vite@5,
-// workspace uses vite@8). The `as UserConfig` cast is a deliberate trade-off
-// to make the build pass; revisit if vitest/vite versions are ever aligned.
+// `as UserConfig`: importing defineConfig from 'vitest/config' fails on a
+// vite version conflict (vitest bundles vite@5, workspace uses vite@8) --
+// this cast lets `tsc -b` pass; revisit if versions ever align.
 export default defineConfig({
   plugins: [react(), tailwindcss(), injectAppTitle()],
   resolve: {

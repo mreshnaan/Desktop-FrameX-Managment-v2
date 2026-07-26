@@ -2,20 +2,13 @@ import { test, expect, type Page, type Browser } from '@playwright/test';
 import { connectToApp, connectToWeb, login, loginWeb, navigateTo } from '../helpers';
 import { branding } from '../../src/config/branding';
 
-// The only spec that proves apps/desktop and apps/web actually interoperate
-// through the real api + Postgres -- every other spec in either suite only
-// exercises one app talking to itself. Runs before 10-backup-restore (which
-// leaves the desktop app unusable) and after the admin specs that need a
-// clean, freshly-seeded desktop app.
+// The only spec proving desktop <-> web interop through the real api +
+// Postgres. Must run before 10-backup-restore (which kills the desktop app).
 //
-// Only webPage is ever reloaded to force an immediate sync cycle (a plain
-// browser rehydrates auth from localStorage with no network round trip).
-// desktopPage is deliberately never reloaded here: its launch-time auth
-// rehydration does a real network call to silently refresh the access
-// token (see AuthContext.tsx), so a reload can transiently show the login
-// screen if that call is merely slow, even though nothing was actually
-// lost. Desktop-side observations instead wait out its own 30s sync
-// interval, which is slower but doesn't touch that code path at all.
+// Only webPage is reloaded to force a sync pull. desktopPage is never
+// reloaded -- its auth rehydration does a real network call that can
+// transiently flash the login screen if slow, so desktop-side checks
+// instead just wait out its own 30s sync interval.
 const DESKTOP_SYNC_WAIT = 35_000;
 
 test.describe.serial('cross-app sync (desktop <-> web)', () => {
@@ -28,11 +21,8 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     await expect(webPage.getByRole('button', { name: 'Daily Sales' })).toBeVisible({ timeout: 15_000 });
   }
 
-  // Chromium (and WebView2) throttles setInterval in a backgrounded
-  // window -- connectToWeb() launching a separate browser can steal focus
-  // from the desktop app, which would silently stall its sync interval far
-  // beyond 30s. Bring it back to front before every wait that depends on
-  // that interval actually firing.
+  // Backgrounded windows throttle setInterval -- bring desktop to front
+  // first or its sync interval can silently stall past 30s.
   async function waitForDesktopSync() {
     await desktopPage.bringToFront();
     await desktopPage.waitForTimeout(DESKTOP_SYNC_WAIT);
@@ -58,17 +48,13 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     await desktopPage.getByRole('button', { name: 'Add customer', exact: true }).click();
     await expect(desktopPage.getByRole('cell', { name: 'E2E Cross D2W', exact: true })).toBeVisible();
 
-    // Desktop pushes on its own 30s interval -- wait that out, then force
-    // web to pull via reload.
+    // Desktop pushes on a 30s interval; force web to pull via reload.
     await waitForDesktopSync();
     await reloadWebAndWait();
     await webPage.getByRole('button', { name: 'Customers' }).click();
     await expect(webPage.getByRole('cell', { name: 'E2E Cross D2W', exact: true })).toBeVisible({ timeout: 15_000 });
 
-    // The push that just landed on the server should be attributed to the
-    // real logged-in user (E2E Owner, per apps/api/scripts/e2e-seed.mjs),
-    // both in the Activity Log (what changed) and the Sync Log (that a push
-    // happened at all).
+    // The push should be attributed to the logged-in user in both logs.
     await desktopPage.bringToFront();
     await navigateTo(desktopPage, 'Activity & Sync Logs');
     await expect(desktopPage.getByRole('cell', { name: /Created customer "E2E Cross D2W"/ }).first()).toBeVisible();
@@ -76,9 +62,7 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     await desktopPage.getByRole('button', { name: 'Sync Log', exact: true }).click();
     await expect(desktopPage.getByRole('cell', { name: 'push', exact: true }).first()).toBeVisible();
 
-    // The same log entries must be visible from web too -- Activity/Sync Log
-    // is a server-side, read-only view on both apps, not something either
-    // client keeps a local copy of.
+    // Same log entries must be visible from web -- it's a server-side view.
     await webPage.bringToFront();
     await navigateTo(webPage, 'Activity & Sync Logs');
     await expect(webPage.getByRole('cell', { name: /Created customer "E2E Cross D2W"/ }).first()).toBeVisible();
@@ -104,10 +88,9 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     await desktopPage.locator('#new-product-price').fill('60');
     await desktopPage.getByRole('button', { name: 'Add product' }).click();
 
-    // Scoped to this test's own category card: other specs in this suite
-    // (03-cafe.spec.ts) leave their own products behind in a differently
-    // named category, and categories don't render in creation order (it's
-    // alphabetical), so an unscoped .last() can resolve to the wrong one.
+    // Scoped to this test's own category: 03-cafe.spec.ts leaves a product
+    // in a different category, and categories render alphabetically, not
+    // in creation order.
     const categoryCard = desktopPage.locator('[data-slot="card"]').filter({ hasText: 'E2E Cafe Sync Category' });
     await expect(categoryCard.locator('input[id^="product-name-"]').last()).toHaveValue('E2E Cafe Sync Cola');
 
@@ -123,12 +106,9 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     await waitForDesktopSync();
     await reloadWebAndWait();
     await navigateTo(webPage, 'Cafe');
-    // Scoped to this product's own row: 03-cafe.spec.ts's "E2E Cola" also
-    // sits at stock 9, so an unscoped "9" cell match would be ambiguous.
+    // Scoped to this product's row: 03-cafe.spec.ts's "E2E Cola" is also at stock 9.
     const webProductRow = webPage.getByRole('row', { name: /E2E Cafe Sync Cola/ });
     await expect(webProductRow).toBeVisible();
-    // Sold once (qty 1) out of the 10 stocked -- read-only, no way to
-    // re-sell it from here, just confirming the same synced number.
     await expect(webProductRow.getByRole('cell', { name: '9', exact: true })).toBeVisible();
 
     await webPage.getByRole('button', { name: 'Orders', exact: true }).click();
@@ -147,8 +127,7 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     await stationCard.getByRole('button', { name: '+ Add session' }).click();
     const sessionRow = stationCard.getByTestId('session-row').last();
     await sessionRow.getByLabel('Amount').fill('300');
-    // Amount commits on blur -- confirm it landed before moving on, instead
-    // of relying on the next click to *also* happen to trigger that blur.
+    // Amount commits on blur -- confirm it landed before moving on.
     await sessionRow.getByLabel('Amount').blur();
     await expect(sessionRow.getByLabel('Amount')).toHaveValue('300');
     await sessionRow.getByLabel('Customer').click();

@@ -25,12 +25,9 @@ pub(crate) async fn do_upsert_rate(
     half_rate: Option<i64>,
     frame_rate: Option<i64>,
 ) -> Result<Rate, String> {
-    // Resolved before pool.begin() below -- get_current_actor(pool) acquires
-    // its own connection from the pool, which would otherwise contend with
-    // (or, on a pool sized down to a single connection, silently fail
-    // against) the one tx already holds. Caught by a real test failure, not
-    // assumed: a max_connections(1) test pool made this deadlock/starve
-    // into a silently-swallowed None instead of the real actor id.
+    // Resolved before pool.begin() -- get_current_actor acquires its own
+    // connection, which contends with (or, on a 1-connection pool, silently
+    // fails against) a transaction already holding one.
     let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
@@ -49,10 +46,7 @@ pub(crate) async fn do_upsert_rate(
         updated_at: crate::time::now_iso(),
     };
 
-    // created_by is deliberately absent from the ON CONFLICT UPDATE SET
-    // clause -- it's set once on the initial INSERT and never touched
-    // again, so a later edit's updated_by doesn't clobber who originally
-    // created the rate.
+    // created_by is absent from ON CONFLICT UPDATE SET -- set once on INSERT only.
     sqlx::query(
         "INSERT INTO rates (id, category_id, hour_rate, half_rate, frame_rate, updated_at, created_by, updated_by)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)

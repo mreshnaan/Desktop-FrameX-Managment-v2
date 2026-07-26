@@ -1,11 +1,7 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
-// Tauri rejects a failed command with the raw string a Rust #[tauri::command]
-// returned via Err(...), not an Error instance -- every view's catch block
-// does `e instanceof Error ? e.message : 'Some generic fallback'`, so without
-// this normalization every backend error (insufficient stock, duplicate PIN,
-// invalid credentials, ...) silently shows the generic fallback instead of
-// the real message. Wrapping invoke() once here fixes every call site below.
+// Tauri rejects with a raw string, not an Error -- normalize once here so
+// every view's `e instanceof Error` catch block gets the real message.
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   try {
     return await tauriInvoke<T>(cmd, args);
@@ -155,27 +151,20 @@ export interface CartItemInput {
   qty: number;
 }
 
-// Thin typed wrappers over Tauri's invoke() -- the only place in the TS
-// codebase that talks to the Rust backend. Every call here corresponds 1:1
-// to a #[tauri::command] in apps/desktop/src-tauri/src/.
+// Thin typed wrappers over Tauri's invoke() -- the only place that talks to
+// the Rust backend. Every call corresponds 1:1 to a #[tauri::command].
 export const commands = {
-  // Auth (src-tauri/src/auth.rs) -- tokens live in the OS keychain, never
-  // in localStorage.
+  // Auth -- tokens live in the OS keychain, never localStorage.
   storeAuthTokens: (accessToken: string, refreshToken: string) =>
     invoke<void>('store_auth_tokens', { accessToken, refreshToken }),
   getAuthTokens: () => invoke<AuthTokens | null>('get_auth_tokens'),
   clearAuthTokens: () => invoke<void>('clear_auth_tokens'),
 
-  // Who's currently logged in on this device -- every create/update command
-  // reads this to stamp createdBy/updatedBy locally before it's included in
-  // the outbox payload (see commands/current_actor.rs). Kept in sync with
-  // login/logout by AuthContext.
+  // Who's logged in on this device -- stamps createdBy/updatedBy locally.
   setCurrentActor: (userId: string) => invoke<void>('set_current_actor', { userId }),
   clearCurrentActor: () => invoke<void>('clear_current_actor'),
 
-  // Categories/stations -- pull-only for everyone except an admin using the
-  // category-management screen (see 'categoryManagement' permission), which
-  // is the only place these write commands are called.
+  // Categories/stations -- pull-only except for admin category management.
   listCategories: () => invoke<CategoryRow[]>('list_categories'),
   createCategory: (name: string, billingType: string) =>
     invoke<CategoryRow>('create_category', { name, billingType }),
@@ -234,9 +223,7 @@ export const commands = {
   deleteOutboxEntries: (ids: number[]) => invoke<void>('delete_outbox_entries', { ids }),
   applyPulledRows: (rows: PulledRow[]) => invoke<void>('apply_pulled_rows', { rows }),
 
-  // Cafe: product categories/products are admin-managed ('productManagement'
-  // permission); create_order is the cashier-facing checkout ('cafe'
-  // permission).
+  // Cafe: products are admin-managed; create_order is the cashier checkout.
   listProductCategories: () => invoke<ProductCategoryRow[]>('list_product_categories'),
   createProductCategory: (name: string) => invoke<ProductCategoryRow>('create_product_category', { name }),
   listProducts: () => invoke<ProductRow[]>('list_products'),
@@ -270,8 +257,7 @@ export const commands = {
   // Reports
   getMonthlyReport: (startDate: string, endDate: string, startUtc: string, endUtc: string) =>
     invoke<MonthlyReportResult>('get_monthly_report', { startDate, endDate, startUtc, endUtc }),
-  // backend returns a plain JSON object { customerId: balance }
-  // — the frontend just reads data[customerId], zero computation.
+  // Returns a plain { customerId: balance } object.
   getCustomerBalances: () =>
     invoke<Record<string, number>>('get_customer_balances'),
   getCustomerCreditHistory: (customerId: string) =>

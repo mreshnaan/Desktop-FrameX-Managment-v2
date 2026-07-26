@@ -76,9 +76,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
       totals.total += s.amount;
       totals[s.method] += s.amount;
     }
-    // Cafe sales are business revenue same as table sessions -- fold them
-    // into the one Total/Cash/Card/Credit figure instead of leaving cafe
-    // money invisible from the day's actual total.
+    // Cafe sales fold into the same Total/Cash/Card/Credit figure as sessions.
     totals.total += cafe.byMethod.total;
     totals.Cash += cafe.byMethod.Cash;
     totals.Card += cafe.byMethod.Card;
@@ -236,10 +234,8 @@ function StationCard({
   );
 }
 
-// Read-only, like the rest of this view's relationship to cafe orders --
-// a sale is rung up from the Cafe screen, not edited here. Profit needs each
-// sold product's cost (a product with no cost set contributes 0 cost, not an
-// error, since cost is optional -- see ProductManagementView).
+// Read-only -- a sale is rung up from the Cafe screen, not edited here.
+// A product with no cost set contributes 0 cost, not an error.
 function CafeSection({
   orders,
   orderItems,
@@ -354,19 +350,12 @@ function SessionRow({
     await updateSession(session.id, patch);
   }
 
-  // Quick actions are for actively running a shift, not editing another
-  // day's already-closed records -- restrict them to today. Within today,
-  // "Extend" only makes sense while the session's end hasn't happened yet in
-  // real time; once it has, retyping the field directly is the correct fix,
-  // not a canned +30m.
+  // Quick actions only apply to today -- not another day's closed records.
   const isToday = date === todayStr();
   const now = nowTimeStr();
   const canSetDuration = billing === 'time' && isToday && !!session.start;
-  // Comparing end/now as plain "HH:MM" strings breaks the moment a session's
-  // end wraps past midnight ("00:45" sorts before "23:15" even though it's
-  // chronologically later) -- durationMinutes already wraps correctly, so
-  // measuring both end and now as elapsed-since-start sidesteps the string
-  // comparison entirely.
+  // Comparing "HH:MM" strings breaks across midnight -- measure both as
+  // elapsed-since-start instead (durationMinutes already wraps correctly).
   const hasEnded =
     !session.start || !session.end || durationMinutes(session.start, now) >= durationMinutes(session.start, session.end);
   const canExtend = billing === 'time' && isToday && !!session.end && !hasEnded;

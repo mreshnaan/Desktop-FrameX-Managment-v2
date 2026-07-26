@@ -1,10 +1,8 @@
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { commands, type CustomerHistoryRow } from '../tauri/commands';
 
-// Customer balances are pre-aggregated entirely in SQLite via
-// get_customer_balances (reports.rs). The backend serialises the result
-// as a plain JSON object { customerId: balance } so the frontend does
-// ZERO computation — balanceFor is just a direct property lookup.
+// Balances are pre-aggregated in SQLite via get_customer_balances --
+// balanceFor is just a direct property lookup, no client-side computation.
 export function useCustomers() {
   const qc = useQueryClient();
 
@@ -13,8 +11,6 @@ export function useCustomers() {
     queryFn: () => commands.listCustomers(),
   });
 
-  // Returns Record<string, number> — a plain {customerId: balance} object.
-  // No array.map, no reduce, no filter ever runs in the browser.
   const balancesQuery = useQuery({
     queryKey: ['customer-balances'],
     queryFn: () => commands.getCustomerBalances(),
@@ -48,7 +44,6 @@ export function useCustomers() {
     await qc.invalidateQueries({ queryKey: ['customer-balances'] });
   }
 
-  // Direct property access — backend owns the lookup table, frontend reads it.
   const balances: Record<string, number> = balancesQuery.data ?? {};
 
   function balanceFor(customerId: string): number {

@@ -9,9 +9,7 @@ test('an admin creates a product with stock, then a cashier sells one and stock 
 
   await page.locator('#new-product-category').fill('E2E Snacks');
   await page.getByRole('button', { name: 'Add category' }).click();
-  // A newly created category with no products isn't rendered anywhere in
-  // the product list (ProductManagementView filters out empty categories),
-  // so the only observable proof it exists is that it's selectable here.
+  // An empty category isn't rendered in the product list -- selectability here is the proof it exists.
   await expect(page.locator('#new-product-category')).toHaveValue('');
 
   await page.locator('#new-product-cat').click();
@@ -20,10 +18,7 @@ test('an admin creates a product with stock, then a cashier sells one and stock 
   await page.locator('#new-product-price').fill('50');
   await page.getByRole('button', { name: 'Add product' }).click();
 
-  // The product's name is the *value* of an editable input (ProductRowEditor),
-  // not plain text -- getByText/hasText never match input values, and
-  // getByDisplayValue is a Testing Library API, not Playwright's. This is
-  // the only product in a fresh e2e run, so id^= is unambiguous.
+  // The product's name is an input value, not text -- getByText won't match it.
   const nameInput = page.locator('input[id^="product-name-"]');
   await expect(nameInput).toHaveValue('E2E Cola');
 

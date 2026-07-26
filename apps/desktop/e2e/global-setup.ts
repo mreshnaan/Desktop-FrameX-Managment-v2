@@ -38,10 +38,8 @@ function killTree(pid: number | undefined) {
   }
 }
 
-// Tauri's app_data_dir is derived from the bundle identifier
-// (tauri.e2e.conf.json sets it to com.cueroom.desktop.e2e specifically so
-// this never touches a real dev/install's AppData). Wiped before every run
-// so each e2e run starts from an empty local database.
+// tauri.e2e.conf.json's isolated bundle id keeps this from ever touching a
+// real dev/install's AppData. Wiped before every run for a clean local DB.
 function wipeE2eAppData() {
   const roaming = process.env.APPDATA;
   const local = process.env.LOCALAPPDATA;
@@ -53,10 +51,7 @@ function wipeE2eAppData() {
 }
 
 export default async function globalSetup() {
-  // 1. Start the real apps/api server against the real local Postgres --
-  // desktop's auth/sync genuinely need a live backend, unlike FrameX which
-  // has none. Uses the already-built dist/server.js (run `pnpm build` in
-  // apps/api first if this fails to find it).
+  // 1. Start the real apps/api server against local Postgres.
   const apiEntry = path.join(API_DIR, 'dist/server.js');
   if (!existsSync(apiEntry)) {
     throw new Error(`${apiEntry} not found -- run "pnpm --filter @cue-room/api build" first`);
@@ -76,9 +71,7 @@ export default async function globalSetup() {
     { cwd: API_DIR, env: process.env, stdio: 'inherit' },
   );
 
-  // 3. Build the frontend, then the debug Tauri binary with --no-bundle
-  // (skip installer creation -- e2e only needs the raw .exe) and the e2e
-  // config override (isolated app identifier).
+  // 3. Build the frontend, then the debug Tauri binary (--no-bundle: e2e only needs the raw .exe).
   execFileSync('pnpm', ['build'], { cwd: DESKTOP_DIR, stdio: 'inherit', shell: true });
   execFileSync(
     'pnpm',
@@ -86,9 +79,7 @@ export default async function globalSetup() {
     { cwd: DESKTOP_DIR, stdio: 'inherit', shell: true },
   );
 
-  // 4. Launch the compiled binary with WebView2's CDP remote-debugging
-  // port enabled -- this is what lets Playwright drive it like a browser
-  // page, the same technique FrameX's own e2e suite uses.
+  // 4. Launch the binary with WebView2's CDP port enabled so Playwright can drive it.
   wipeE2eAppData();
   const exePath = path.join(DESKTOP_DIR, 'src-tauri/target/debug/cue-room-desktop.exe');
   if (!existsSync(exePath)) {
@@ -101,10 +92,8 @@ export default async function globalSetup() {
 
   await waitFor(`http://localhost:${CDP_PORT}/json/version`, 20_000, 'the desktop app (CDP)');
 
-  // 5. Also start apps/web's dev server -- only the cross-app-sync spec
-  // needs it (to drive a real second client against the same api), but it's
-  // cheap to keep running for the whole suite rather than scoping it to one
-  // spec file.
+  // 5. Also start apps/web's dev server -- only cross-app-sync needs it,
+  // but it's cheap to keep running for the whole suite.
   const webProcess: ChildProcess = spawn('pnpm', ['dev'], {
     cwd: WEB_DIR,
     env: { ...process.env, PORT: String(WEB_PORT) },

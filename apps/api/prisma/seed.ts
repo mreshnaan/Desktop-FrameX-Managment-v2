@@ -37,10 +37,8 @@ interface CategorySeed {
   rate: { hour: number; half: number } | { value: number };
 }
 
-// Mirrors apps/web's former hardcoded CATEGORIES/DEFAULT_RATES constants.
-// This seed is now the single source of truth for the category/station list --
-// apps/web and apps/desktop both pull it from here via sync instead of
-// hardcoding it locally.
+// Single source of truth for the category/station list -- both apps pull
+// this via sync instead of hardcoding it locally.
 const SEED_CATEGORIES: CategorySeed[] = [
   {
     name: '8-Ball',

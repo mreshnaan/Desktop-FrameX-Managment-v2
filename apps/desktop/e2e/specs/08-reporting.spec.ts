@@ -7,12 +7,9 @@ function daysAgo(n: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Orders have no delete path (append-only -- see do_create_order's comment),
-// so earlier specs in this same suite run (03-cafe, 06-cross-app-sync) leave
-// their own cafe orders in place for today/this month. The Daily/Monthly
-// Sales Cafe cards correctly aggregate ALL of that, so this test reads the
-// figure before its own sale and asserts the increase, rather than an
-// absolute total that would only hold when run in isolation.
+// Orders have no delete path, so earlier specs' cafe orders persist in the
+// same day/month -- these read a figure before the test's own sale so it
+// can assert the increase, not an absolute total.
 function parseLabeledAmount(text: string, label: string): number {
   const match = text.match(new RegExp(`${label}\\s*Rs\\.\\s*([\\d,]+)`, 'i'));
   if (!match) throw new Error(`"${label}" amount not found in: ${text}`);
@@ -43,10 +40,8 @@ test('cost price, cafe profit roll-up, and backdated Monthly Expenses', async ()
   const monthlyRevenueBefore = parseFirstAmount(monthlyBeforeText);
   const monthlyProfitBefore = parseLabeledAmount(monthlyBeforeText, 'profit');
 
-  // Verify overall financial summary cards & filter dropdown interaction.
-  // Scoped by testid rather than hasText -- the breakdown table's own
-  // column headers ("Gross Revenue", "Total Expenses") repeat this text,
-  // so an unanchored [data-slot="card"] hasText match hits both.
+  // Scoped by testid: the breakdown table's own column headers repeat
+  // this text, so an unanchored hasText match would hit both.
   await expect(page.getByTestId('gross-revenue-card')).toBeVisible();
   await expect(page.getByTestId('total-expenses-card')).toBeVisible();
   await expect(page.getByTestId('net-profit-card')).toBeVisible();
@@ -96,9 +91,7 @@ test('cost price, cafe profit roll-up, and backdated Monthly Expenses', async ()
     expect(parseLabeledAmount(text, 'Profit')).toBe(dailyProfitBefore + 50); // 150 - 100 cost
   }).toPass();
   await cafeCard.getByRole('button', { name: 'Show orders' }).click();
-  // Orders list newest-first and other specs earlier in this suite run leave
-  // their own cafe orders in place (no delete path), so several rows can
-  // match "1 item(s) — Cash" -- this test's own sale is the most recent.
+  // Orders list newest-first; other specs' orders can also match this text.
   await expect(cafeCard.getByText(/1 item\(s\) — Cash/).first()).toBeVisible();
 
   await navigateTo(page, 'Monthly Sales');
@@ -113,8 +106,7 @@ test('cost price, cafe profit roll-up, and backdated Monthly Expenses', async ()
   await navigateTo(page, 'Expenses');
   await page.getByLabel('Backdate to').fill(yesterday);
   await page.getByRole('button', { name: '+ Add expense' }).click();
-  // The new row is filed under yesterday's date, not today's (currently
-  // viewed) list -- step the date view back one day to reach it.
+  // The new row is filed under yesterday, not today's currently-viewed list.
   await page.getByRole('button', { name: 'Previous day' }).click();
   const row = page.getByTestId('expense-row').last();
   await row.getByLabel('Description').fill('E2E Reporting Ice');
@@ -127,15 +119,11 @@ test('cost price, cafe profit roll-up, and backdated Monthly Expenses', async ()
   await expect(page.getByText('No expenses recorded for this day.')).toBeVisible();
 
   await navigateTo(page, 'Monthly Expenses');
-  // Matched by its total rather than the day-of-month number -- a bare day
-  // number (e.g. "7") can collide as a substring of an unrelated amount
-  // (e.g. "Rs. 75"), but no other day in an isolated test run also totals
-  // exactly this.
+  // Matched by total, not day number -- a bare "7" can collide with "Rs. 75".
   const dayRow = page.getByRole('row').filter({ hasText: 'Rs. 75' });
   await dayRow.click();
 
-  // The description lives in an <input> value, not rendered text content --
-  // getByText() only matches the latter, so assert via the field itself.
+  // getByText() doesn't match input values -- assert via the field itself.
   const jumpedRow = page.getByTestId('expense-row').last();
   await expect(jumpedRow.getByLabel('Description')).toHaveValue('E2E Reporting Ice');
 

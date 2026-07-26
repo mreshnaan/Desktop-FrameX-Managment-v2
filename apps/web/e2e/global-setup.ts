@@ -34,11 +34,8 @@ function killTree(pid: number | undefined) {
   }
 }
 
-// Mirrors apps/desktop/e2e/global-setup.ts's approach (same real api + real
-// Postgres + real seeded user), minus the Tauri/CDP layer -- this is a plain
-// browser app, so Playwright's own webServer-style orchestration is done by
-// hand here rather than via the config's `webServer` option, to keep both
-// suites structured the same way.
+// Mirrors apps/desktop/e2e/global-setup.ts (same real api + Postgres +
+// seeded user), minus the Tauri/CDP layer.
 export default async function globalSetup() {
   const apiEntry = path.join(API_DIR, 'dist/server.js');
   if (!existsSync(apiEntry)) {
@@ -52,9 +49,7 @@ export default async function globalSetup() {
 
   await waitFor(`http://localhost:${API_PORT}/health`, 15_000, 'apps/api');
 
-  // Seed the known e2e test user (shared with apps/desktop's suite --
-  // see apps/api/scripts/e2e-seed.mjs; the two suites are never run
-  // concurrently against the same api instance).
+  // Seeds the same e2e user as apps/desktop's suite (never run concurrently).
   execFileSync(
     process.execPath,
     [path.join(API_DIR, 'scripts/e2e-seed.mjs')],

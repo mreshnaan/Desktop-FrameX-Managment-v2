@@ -15,10 +15,8 @@ pub(crate) fn payload(p: &Product, created_by: &Option<String>, updated_by: &Opt
     })
 }
 
-// Every command below is split into a plain `do_*` function taking a raw
-// `&SqlitePool` (unit-testable with an in-memory db -- see the `tests`
-// module) and a thin `#[tauri::command]` wrapper that just unwraps Tauri's
-// State, which can't be constructed outside a running app.
+// Each command is a testable `do_*` function taking a raw `&SqlitePool`,
+// plus a thin `#[tauri::command]` wrapper that unwraps Tauri's State.
 
 pub(crate) async fn do_list_products(pool: &SqlitePool) -> Result<Vec<Product>, String> {
     sqlx::query_as::<_, Product>(
@@ -170,10 +168,8 @@ pub async fn update_product(
 }
 
 // Manual stock adjustment (purchase/waste/correction) -- rejects a negative
-// resulting stock, updates products.stock_qty and logs a stock_movements
-// row in the same transaction, matching FrameX's adjust_stock. Both the
-// product update and the movement row get their own outbox entry so they
-// sync independently.
+// resulting stock, and updates stock_qty + logs a stock_movements row in
+// one transaction, each with its own outbox entry.
 pub(crate) async fn do_adjust_stock(
     pool: &SqlitePool,
     product_id: String,

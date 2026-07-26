@@ -1,8 +1,5 @@
-// Roles are dynamic, DB-backed data (apps/api's Role/Permission tables) --
-// this file only carries the static permission-key list, shared with
-// apps/api so both sides agree on valid keys. Access checks are
-// permission-based against the permission list embedded in the JWT at
-// login, not a role-name switch.
+// Roles are dynamic, DB-backed data -- this file only carries the static
+// permission-key list, kept in sync with apps/api's copy.
 
 export type PermissionKey =
   | 'dailySales'

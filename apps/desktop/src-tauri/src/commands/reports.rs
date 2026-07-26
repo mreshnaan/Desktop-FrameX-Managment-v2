@@ -121,14 +121,8 @@ pub async fn get_monthly_report(
     do_get_monthly_report(pool.inner(), start_date, end_date, start_utc, end_utc).await
 }
 
-/// Returns customer balances as a plain JSON object keyed by customer id:
-///   { "<uuid>": 450, "<uuid2>": 0, ... }
-///
-/// The frontend does ZERO work — it just reads `data[customerId]`. No
-/// array-to-map conversion, no reduce, no filter.
-///
-/// Balance = sum(Credit sessions) + sum(Credit cafe orders)
-///         + sum(CREDIT_GIVEN entries) − sum(PAYMENT_RECEIVED entries)
+/// Customer balances as { customerId: balance }.
+/// balance = credit sessions + credit cafe orders + CREDIT_GIVEN − PAYMENT_RECEIVED
 #[derive(Debug, FromRow)]
 pub struct CustomerBalanceRow {
     pub customer_id: String,
@@ -177,8 +171,6 @@ pub(crate) async fn do_get_customer_balances(
     .await
     .map_err(|e| e.to_string())?;
 
-    // Collected into a HashMap in Rust — serialises as a plain JSON object.
-    // The frontend receives { customerId: balance } and does zero work.
     Ok(rows.into_iter().map(|r| (r.customer_id, r.balance)).collect())
 }
 
@@ -189,10 +181,7 @@ pub async fn get_customer_balances(
     do_get_customer_balances(pool.inner()).await
 }
 
-/// A merged timeline row returned by get_customer_credit_history.
-/// Combines Credit sessions (table charges) and credit_entries (manual
-/// adjustments) for one customer — sorted date-descending — so the
-/// frontend has nothing left to compute, filter, or sort.
+/// One merged, date-descending timeline row: a Credit session or credit_entry.
 #[derive(Debug, Serialize, FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomerHistoryRow {
@@ -208,14 +197,8 @@ pub(crate) async fn do_get_customer_credit_history(
     pool: &SqlitePool,
     customer_id: String,
 ) -> Result<Vec<CustomerHistoryRow>, String> {
-    // `date` is a plain calendar day (see Session/CreditEntry's schema), so
-    // two entries recorded on the same day sort as ties on it alone --
-    // ORDER BY date DESC would then fall back to whatever order SQLite
-    // happens to return them in, not necessarily the order they were
-    // actually recorded. updated_at (a full timestamp both tables already
-    // carry) breaks that tie by actual recency; it's only used inside the
-    // ORDER BY of the outer query below, not selected into the final
-    // result, so CustomerHistoryRow's shape is unaffected.
+    // `date` is a plain calendar day, so same-day entries need updated_at as
+    // a tiebreaker (used only in ORDER BY, not selected into the result).
     sqlx::query_as::<_, CustomerHistoryRow>(
         "SELECT id, date, label, amount, direction FROM (
              SELECT
@@ -293,11 +276,8 @@ mod tests {
         let pool = setup_test_db().await;
         let customer = do_create_customer(&pool, "Ravi".to_string(), "".to_string()).await.unwrap();
 
-        // Insert a Credit session directly via SQL — do_create_session's
-        // public API doesn't accept method/customer_id at creation time.
-        // A fresh test DB has no stations of its own, unlike the real app
-        // (seeded via the UI) -- create one first rather than assuming any
-        // row is already there to select.
+        // Insert a Credit session directly -- do_create_session doesn't
+        // accept method/customer_id, and a fresh test DB has no station yet.
         let session_id = uuid::Uuid::new_v4().to_string();
         let category = do_create_category(&pool, "8-Ball".to_string(), "time".to_string()).await.unwrap();
         let station = do_create_station(&pool, category.id.clone(), "Table 1".to_string()).await.unwrap();

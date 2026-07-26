@@ -3,11 +3,8 @@ use serde_json::Value;
 use sqlx::{Sqlite, SqlitePool, Transaction};
 use tauri::State;
 
-// Inserts the outbox row in the SAME transaction as the caller's table
-// write -- this is the concrete correctness improvement over apps/web's
-// Dexie outbox (a local write and its outbox-enqueue there are two
-// separate, non-atomic operations; here a crash rolls back either both or
-// neither). See the desktop design spec's Architecture section.
+// Inserts the outbox row in the SAME transaction as the caller's table write,
+// so a crash rolls back both or neither (unlike apps/web's Dexie outbox).
 pub async fn enqueue_outbox_tx(
     tx: &mut Transaction<'_, Sqlite>,
     table: &str,
@@ -48,9 +45,8 @@ pub(crate) async fn do_drain_outbox(pool: &SqlitePool) -> Result<Vec<OutboxEntry
     .map_err(|e| e.to_string())
 }
 
-// Called by the TS sync engine (see apps/desktop's syncEngine.ts) before
-// POSTing to /sync/push -- TS owns the HTTP call and timer/online-listener
-// orchestration, Rust only owns the SQLite read/write.
+// Called by syncEngine.ts before POSTing to /sync/push -- TS owns the HTTP
+// call and timing, Rust only owns the SQLite read/write.
 #[tauri::command]
 pub async fn drain_outbox(pool: State<'_, SqlitePool>) -> Result<Vec<OutboxEntryRow>, String> {
     do_drain_outbox(pool.inner()).await
@@ -83,9 +79,8 @@ pub struct PulledRow {
 }
 
 // Applies pulled rows from GET /sync/pull. categories/stations always
-// overwrite (server-authoritative reference data, no updatedAt column --
-// see the design spec); every other table applies last-write-wins by
-// comparing updatedAt, matching apps/web's syncEngine.ts mergeIncoming().
+// overwrite (no updatedAt column); everything else is last-write-wins by
+// updatedAt, matching apps/web's syncEngine.ts mergeIncoming().
 pub(crate) async fn do_apply_pulled_rows(pool: &SqlitePool, rows: Vec<PulledRow>) -> Result<(), String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     for entry in rows {

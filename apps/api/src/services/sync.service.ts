@@ -19,11 +19,8 @@ export interface Actor {
 
 type TxClient = Prisma.TransactionClient;
 
-// Builds the ActivityLog's one-line human-readable summary from whatever
-// the client already sent in the payload -- no extra DB lookups (a
-// category/customer/product name is always present on its own row's
-// payload; cross-entity context like "which category is this station in"
-// isn't worth a join just for a log line).
+// Builds the ActivityLog's one-line summary from the payload alone -- no
+// extra DB lookups.
 function summarize(table: OutboxEntry['table'], payload: Record<string, unknown>): string {
   const str = (v: unknown) => (typeof v === 'string' ? v : '');
   const num = (v: unknown) => (typeof v === 'number' ? v : 0);
@@ -55,33 +52,23 @@ function summarize(table: OutboxEntry['table'], payload: Record<string, unknown>
   }
 }
 
-// Append-only ledgers (an order line, a stock movement, a credit entry, a
-// checked-out order) have no createdBy/updatedBy update path -- only the
-// create-time stamp exists, so `updatedBy` is never written for these.
+// Append-only tables have no updatedBy column -- only createdBy is ever stamped.
 const APPEND_ONLY_TABLES = new Set<OutboxEntry['table']>(['creditEntries', 'orders', 'orderItems', 'stockMovements']);
 
 async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: Actor): Promise<void> {
   const isDelete = entry.op === 'delete';
-  // Append-only tables (APPEND_ONLY_TABLES) have no updatedBy column --
-  // including it in `create` throws a Prisma "unknown argument" error.
   const stampCreate = actor
     ? APPEND_ONLY_TABLES.has(entry.table)
       ? { createdBy: actor.id }
       : { createdBy: actor.id, updatedBy: actor.id }
     : {};
   const stampUpdate = actor ? (APPEND_ONLY_TABLES.has(entry.table) ? {} : { updatedBy: actor.id }) : {};
-  // A client's payload may itself carry createdBy/updatedBy (desktop always
-  // includes them; see current_actor.rs) -- stripped here so they can never
-  // leak through as stale/client-asserted values on an update. createdBy/
-  // updatedBy are exclusively server-derived, via stampCreate/stampUpdate
-  // above.
+  // createdBy/updatedBy are server-derived only -- strip any client-sent
+  // values so they can't leak through as stale data on an update.
   const { createdBy: _clientCreatedBy, updatedBy: _clientUpdatedBy, ...payload } = entry.payload;
 
-  // Existence check up front: every write below is an upsert (a client's
-  // outbox entry doesn't distinguish "this id already exists on the
-  // server" from "it doesn't" -- two devices can each create the same
-  // locally-generated id independently), so this is the only way to know
-  // whether to log the entry as a create or an update.
+  // Every write below is an upsert (two devices can create the same locally
+  // generated id independently), so this is the only way to log create vs update.
   const existed = await entryExists(tx, entry.table, entry.id);
   const action = isDelete ? 'delete' : existed ? 'update' : 'create';
 
@@ -114,7 +101,7 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
       break;
     }
     case 'creditEntries': {
-      // CreditEntry has no deletedAt column — deletes are not soft-deletable here, only updatedAt is stamped.
+      // No deletedAt column -- not soft-deletable, only updatedAt is stamped.
       const base = { ...payload, updatedAt: now };
       await tx.creditEntry.upsert({
         where: { id: entry.id },
@@ -134,11 +121,7 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
       break;
     }
     case 'categories': {
-      // No client ever pushes a categories/stations entry today (they're
-      // seeded server-side and have no CRUD UI), but the server still handles
-      // upserts uniformly with every other table rather than special-casing
-      // "unreachable" — leaves room for an admin UI later without another
-      // sync-service change.
+      // Server-seeded, no CRUD UI pushes this today -- handled uniformly anyway.
       const base = { ...payload, ...stampUpdate };
       await tx.category.upsert({
         where: { id: entry.id },
@@ -157,8 +140,6 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
       break;
     }
     case 'productCategories': {
-      // No CRUD UI pushes these except the desktop admin's product-management
-      // screen (mirrors categories/stations).
       const base = { ...payload, ...stampUpdate };
       await tx.productCategory.upsert({
         where: { id: entry.id },
@@ -186,8 +167,7 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
       break;
     }
     case 'orderItems': {
-      // Immutable line items -- no deletedAt, order rows are never edited
-      // after creation.
+      // Immutable line items -- no deletedAt.
       const base = { ...payload, updatedAt: now };
       await tx.orderItem.upsert({
         where: { id: entry.id },
@@ -250,36 +230,12 @@ async function entryExists(tx: TxClient, table: OutboxEntry['table'], id: string
   }
 }
 
-// Applies a batch of client outbox entries.
-//
-// Design note -- transaction PER ENTRY, not one shared transaction for the whole
-// batch:
-//
-// The obvious-looking design is a single `prisma.$transaction(async (tx) => {...})`
-// wrapping the whole loop, with a try/catch around each entry inside it so one bad
-// entry can't blow up the others. That does NOT work with Postgres. This was
-// verified directly (not assumed): once any statement inside a Postgres
-// transaction errors, the server marks the *entire* transaction as aborted
-// (SQLSTATE 25P02, "current transaction is aborted, commands ignored until end of
-// transaction block") and rejects every subsequent statement in that transaction,
-// even if the application already caught and swallowed the first error. So a
-// single shared transaction cannot give true per-entry isolation -- the first bad
-// entry would silently take out every entry after it in the same batch.
-//
-// Transaction-per-entry sidesteps this entirely: each entry's write is wrapped in
-// its own `prisma.$transaction`, so it commits or rolls back independently.
-//   - Atomicity: a single entry here is one upsert, already atomic on its own, but
-//     wrapping it keeps the shape uniform and safe if an entry ever needs more than
-//     one write in future.
-//   - Idempotent retries: a failed entry leaves no partial state, so the client can
-//     safely retry it later without risk of double-applying part of a write.
-//   - Isolation: one entry's failure (and Postgres-side transaction abort) is fully
-//     contained to that entry's own transaction and never touches any other entry's
-//     transaction, in the same batch or a later retry.
-//
-// The ActivityLog row for a given entry is written inside that SAME
-// per-entry transaction, so a failed entry never produces a log row for
-// a write that didn't actually happen.
+// One transaction PER ENTRY, not one shared transaction for the whole batch:
+// Postgres aborts an ENTIRE transaction after any statement errors (SQLSTATE
+// 25P02), even if the app catches it -- so a shared transaction would let one
+// bad entry silently kill every entry after it. Per-entry transactions keep
+// failures isolated and retries safe, and each entry's ActivityLog row is
+// written in that same transaction so a failed entry never logs a phantom write.
 export async function applyPush(entries: OutboxEntry[], actorUserId?: string): Promise<ApplyPushResult> {
   const failed: PushFailure[] = [];
   const actor = await resolveActor(actorUserId);
@@ -319,9 +275,7 @@ async function resolveActor(userId?: string): Promise<Actor | undefined> {
 
 export async function pullSince(since?: string, actorUserId?: string) {
   const where = since ? { updatedAt: { gt: new Date(since) } } : {};
-  // categories/stations have no updatedAt column (see schema migration note --
-  // they're stable, server-seeded reference data with no client-side edits),
-  // so every pull returns the full set rather than filtering by `since`.
+  // categories/stations have no updatedAt column, so every pull returns the full set.
   const [
     sessions, expenses, customers, creditEntries, rates, categories, stations,
     productCategories, products, orders, orderItems, stockMovements,

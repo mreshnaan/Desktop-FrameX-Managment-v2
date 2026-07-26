@@ -99,11 +99,7 @@ reportsRouter.get('/monthly', async (req, res) => {
   return res.json({ sessionTotals, expenseTotals, cafeTotals });
 });
 
-// ------------------------------------------------------------------
-// GET /reports/customer-balances
-// Returns one row per active customer with their net credit balance.
-// All arithmetic lives in the DB — no JS map/reduce needed on the client.
-// ------------------------------------------------------------------
+// GET /reports/customer-balances -- one row per active customer's net credit balance.
 reportsRouter.get('/customer-balances', async (_req, res) => {
   const customers = await prisma.customer.findMany({
     where: { deletedAt: null },
@@ -147,17 +143,11 @@ reportsRouter.get('/customer-balances', async (_req, res) => {
       (paymentReceivedMap.get(c.id) ?? 0);
   }
 
-  // Return a plain { customerId: balance } object — the frontend reads
-  // data[customerId] directly, zero array mapping or computation needed.
   return res.json(balances);
 });
 
-// ------------------------------------------------------------------
-// GET /reports/customer-credit-history/:customerId
-// Returns the merged, date-sorted timeline (Credit sessions +
-// credit_entries) for one customer. Pre-sorted in JS since Prisma
-// doesn't support UNION — but still scoped to a single customer_id.
-// ------------------------------------------------------------------
+// GET /reports/customer-credit-history/:customerId -- merged, date-sorted
+// timeline (Credit sessions + credit_entries). Pre-sorted in JS since Prisma has no UNION.
 reportsRouter.get('/customer-credit-history/:customerId', async (req, res) => {
   const { customerId } = req.params;
 
@@ -172,11 +162,7 @@ reportsRouter.get('/customer-credit-history/:customerId', async (req, res) => {
     }),
   ]);
 
-  // `date` is a plain calendar day, so two entries recorded on the same day
-  // tie on it alone -- sorting by date alone would then fall back to
-  // whatever order they happen to arrive in, not necessarily the order they
-  // were actually recorded. updatedAt (a full timestamp both tables already
-  // carry) breaks that tie by actual recency.
+  // `date` is a plain calendar day, so same-day entries need updatedAt as a tiebreaker.
   const rows = [
     ...sessions.map(s => ({
       id: `session-${s.id}`,

@@ -24,12 +24,8 @@ import ProductManagementView from './components/views/ProductManagementView';
 import AuditLogView from './components/views/AuditLogView';
 import type { PermissionKey } from '@/lib/shared';
 
-// networkMode defaults to 'online' in TanStack Query, which pauses queries
-// and mutations whenever the browser is offline -- even ones whose queryFn
-// never touches the network (every view here reads/writes local SQLite via
-// Tauri commands, not the network). 'always' makes queries/mutations run
-// unconditionally, which is correct for state whose real backing store is
-// local-first SQLite, not the network. Same rationale as apps/web.
+// 'always': every query/mutation here hits local SQLite via Tauri, not the
+// network, so TanStack Query's default offline-pausing doesn't apply.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { networkMode: 'always' },
@@ -37,12 +33,9 @@ const queryClient = new QueryClient({
   },
 });
 
-// Defense in depth: the sidebar (Sidebar.tsx) already hides nav buttons for
-// roles without the matching permission, but that alone doesn't stop a view
-// from being reached some other way (e.g. state left over from a role
-// change, a bug elsewhere). The real enforcement is server-side
-// (`requireView` on the API), but this avoids rendering a confusing
-// blank/broken screen client-side if it's ever reached.
+// Defense in depth -- Sidebar already hides nav buttons per permission;
+// real enforcement is server-side (`requireView`), this just avoids a
+// blank/broken screen if a view is reached some other way.
 function PermissionGate({ permissions, requires, children }: {
   permissions: string[] | undefined;
   requires: PermissionKey;
@@ -130,21 +123,16 @@ function AuthenticatedApp() {
 
 function Gate() {
   const { state, ready, refreshAccessToken } = useAuth();
-  // Categories/stations ship empty in a fresh SQLite database (see the
-  // desktop design spec) -- a fresh install has nothing to show until it's
-  // pulled them from the server at least once. This blocks the app shell
-  // until that first pull completes, so the UI never renders with zero
-  // categories.
+  // A fresh SQLite install has no categories/stations until first pulled
+  // from the server -- blocks the app shell until that pull completes.
   const [bootstrapped, setBootstrapped] = useState(false);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!state.accessToken) return;
     return startSyncEngine(state.accessToken, queryClient, refreshAccessToken);
-    // refreshAccessToken is intentionally omitted from deps: it is redefined
-    // every render, and re-keying on it would needlessly tear down/restart the
-    // sync engine. The engine only needs the currently-valid closure, which it
-    // captures at start time; the token itself is the meaningful dependency.
+    // refreshAccessToken is redefined every render; omitted so it doesn't
+    // needlessly restart the sync engine.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.accessToken]);
 
@@ -169,9 +157,8 @@ function Gate() {
     };
   }, [state.accessToken, bootstrapped]);
 
-  // `ready` is false while AuthContext is still attempting its launch-time
-  // silent refresh from the OS keychain -- showing LoginForm too early would
-  // flash it for an already-logged-in user before that check resolves.
+  // `ready` false = still attempting silent refresh from the OS keychain --
+  // avoids flashing LoginForm for an already-logged-in user.
   if (!ready) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4 text-sm text-muted-foreground">

@@ -1,11 +1,9 @@
 use sqlx::SqlitePool;
 use tauri::State;
 
-// Every create/update command stamps created_by/updated_by from whoever is
-// currently logged in on this device. There's no local `users` table (see
-// migrations/0003_audit_trail.sql), so this is the one source of truth for
-// "who is acting right now" -- a single-row table AuthContext keeps in sync
-// with login/logout, read by every mutating command via get_current_actor.
+// Single-row table holding "who is acting right now" -- there's no local
+// users table, so every mutating command reads this via get_current_actor
+// to stamp created_by/updated_by. Kept in sync with login/logout.
 
 pub(crate) async fn do_set_current_actor(pool: &SqlitePool, user_id: String) -> Result<(), String> {
     sqlx::query(
@@ -27,19 +25,13 @@ pub(crate) async fn do_clear_current_actor(pool: &SqlitePool) -> Result<(), Stri
     Ok(())
 }
 
-// Not a #[tauri::command] -- an internal helper every mutating command
-// calls to stamp created_by/updated_by. Returns None if nobody is
-// currently set (shouldn't happen in practice since every mutating screen
-// requires login first, but a missing actor should degrade to "unattributed"
-// rather than fail the write).
+// Internal helper -- returns None (not an error) if nobody is set, so a
+// missing actor degrades to "unattributed" rather than failing the write.
 //
-// IMPORTANT: always call this BEFORE opening a transaction (pool.begin()),
-// never after. It acquires its own connection from `pool`; calling it while
-// a transaction on that same pool is already open makes it contend with (or,
-// on a pool sized down to one connection -- as the sqlite test pool is --
-// silently fail against) the connection the transaction is holding, and the
-// failure is swallowed into a plain None rather than surfaced. This is not
-// hypothetical: it broke rates.rs's upsert this way, caught by
+// IMPORTANT: call this BEFORE opening a transaction, never after -- it
+// acquires its own connection, which can contend with (or, on a 1-connection
+// pool, silently fail against) an already-open transaction on the same pool.
+// Broke rates.rs's upsert this way once; see
 // upserting_again_updates_updated_by_but_never_overwrites_the_original_created_by.
 pub(crate) async fn get_current_actor(pool: &SqlitePool) -> Option<String> {
     sqlx::query_scalar::<_, String>("SELECT user_id FROM current_actor WHERE id = 1")

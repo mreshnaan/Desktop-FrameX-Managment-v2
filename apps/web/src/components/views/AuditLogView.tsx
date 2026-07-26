@@ -46,10 +46,7 @@ function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
-// Read-only on web by design -- see the desktop app for the equivalent
-// admin-write screens (Categories, Products, Roles, Backup). Web is a
-// remote view-only dashboard for owners/admins, not a second place to make
-// changes from.
+// Read-only on web by design -- writes happen in the desktop app.
 export default function AuditLogView() {
   const [tab, setTab] = useState<'activity' | 'sync'>('activity');
 

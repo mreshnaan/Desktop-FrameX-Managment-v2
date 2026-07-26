@@ -1,12 +1,8 @@
 import { createContext, useEffect, useState, type ReactNode } from 'react';
 import { apiFetch, ApiError } from '../api/client';
 
-// The server rejects a refresh token with 401 specifically when it's
-// genuinely invalid/expired/tampered (see apps/api's auth.routes.ts) --
-// that's the only case a stored session should be cleared. Any other
-// failure (network blip, api unreachable, 5xx) must leave the stored
-// refresh token alone so the next attempt can still succeed; treating every
-// failure the same would log a user out over a transient hiccup.
+// Only a 401 (genuinely invalid/expired/tampered token) should clear the
+// stored session -- a transient failure must not log the user out.
 function isGenuinelyInvalidRefreshToken(e: unknown): boolean {
   return e instanceof ApiError && e.status === 401;
 }
@@ -24,10 +20,8 @@ export const AuthContext = createContext<{
   state: AuthState;
   login: (username: string, pin: string) => Promise<void>;
   logout: () => void;
-  // Exchanges the stored refresh token for a fresh access token, updating both
-  // React state and localStorage. Returns the new access token on success, or
-  // null when the refresh token is missing/expired/invalid (in which case the
-  // session is cleared and the user is dropped back to the login screen).
+  // Returns the new access token, or null if the refresh token was invalid
+  // (session is cleared and the user dropped back to login).
   refreshAccessToken: () => Promise<string | null>;
 } | null>(null);
 
@@ -80,9 +74,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState(next);
       return result.accessToken;
     } catch (e) {
-      // Only a genuinely invalid/expired refresh token warrants a real
-      // logout -- a transient failure (network blip, api briefly down) must
-      // not wipe a still-valid stored session.
       if (isGenuinelyInvalidRefreshToken(e)) logout();
       return null;
     }

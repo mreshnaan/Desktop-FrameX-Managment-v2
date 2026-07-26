@@ -31,19 +31,10 @@ pub mod test_helpers {
     use sqlx::SqlitePool;
     use std::str::FromStr;
 
-    // Deliberately file-backed, not `sqlite::memory:`. Verified directly
-    // (not assumed): `VACUUM INTO` against an in-memory source silently
-    // returns Ok() without ever writing the destination file on this
-    // sqlx/libsqlite3-sys build on Windows -- a real, reproducible quirk,
-    // not a guess. A file-backed test db matches what the real app always
-    // uses (see init_pool above) and sidesteps that quirk for every test,
-    // not just backup.rs's.
-    //
-    // Each call gets its own temp file so tests never share state; the
-    // TempDir guard is intentionally leaked (`into_path`) rather than
-    // dropped, since dropping it would delete the file out from under a
-    // SqlitePool that may still hold it open on Windows. The leaked files
-    // are tiny and land in the OS temp dir, which is cleaned up externally.
+    // Deliberately file-backed, not `sqlite::memory:` -- on this Windows
+    // sqlx build, `VACUUM INTO` against an in-memory source silently no-ops.
+    // The TempDir guard is leaked (`into_path`) rather than dropped, since
+    // dropping it can delete the file out from under a still-open SqlitePool.
     pub async fn setup_test_db() -> SqlitePool {
         let dir = tempfile::tempdir().expect("create temp dir for test db").keep();
         let db_path = dir.join("test.sqlite");

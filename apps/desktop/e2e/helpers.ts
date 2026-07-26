@@ -7,9 +7,7 @@ export const E2E_USERNAME = 'e2e-owner';
 export const E2E_PIN = '1234';
 
 // Connects to the already-running desktop app over WebView2's CDP port
-// (started by global-setup.ts) -- there is no dev server / baseURL here,
-// this drives the real compiled binary the same way FrameX's e2e suite
-// does.
+// (started by global-setup.ts) -- drives the real compiled binary.
 export async function connectToApp(): Promise<Page> {
   const browser = await chromium.connectOverCDP(CDP_URL);
   const context = browser.contexts()[0];
@@ -18,10 +16,8 @@ export async function connectToApp(): Promise<Page> {
   return page;
 }
 
-// If a previous spec failed before reaching its own logout() call, the app
-// is left authenticated -- log out first so every spec can assume a clean
-// login screen, instead of hanging on a login form that was never going to
-// appear.
+// A previous spec may have failed before its own logout() -- log out first
+// so every spec can assume a clean login screen.
 async function ensureLoggedOut(page: Page): Promise<void> {
   const loginUsername = page.locator('#login-username');
   if (await loginUsername.isVisible({ timeout: 1_000 }).catch(() => false)) return;
@@ -39,10 +35,8 @@ export async function login(page: Page, username = E2E_USERNAME, pin = E2E_PIN):
   await page.getByRole('button', { name: 'Sign in' }).click();
 }
 
-// A plain browser instance (not CDP) pointed at apps/web's dev server
-// (started by global-setup.ts alongside the desktop binary) -- used only by
-// the cross-app-sync spec to prove data written on one client reaches the
-// other through the real api, not just within a single app's own suite.
+// A plain browser instance pointed at apps/web's dev server -- used only by
+// the cross-app-sync spec.
 export async function connectToWeb(): Promise<{ browser: Browser; page: Page }> {
   const browser = await chromium.launch();
   const page = await browser.newPage();
@@ -54,17 +48,12 @@ export async function loginWeb(page: Page, username = E2E_USERNAME, pin = E2E_PI
   await page.locator('#login-username').fill(username);
   await page.locator('#login-pin').fill(pin);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  // Unlike desktop's login(), this one is awaited before the caller does
-  // anything else -- a silent login failure here would otherwise surface as
-  // a confusing timeout several steps later instead of at its real source.
+  // Awaited immediately so a login failure surfaces here, not as a later timeout.
   await page.getByRole('button', { name: 'Daily Sales' }).waitFor({ state: 'visible', timeout: 15_000 });
 }
 
-// The sidebar renders each nav item as a <button> (SidebarMenuButton with an
-// onClick handler, not an <a href>), so this looks for a button by name --
-// not a link. exact: true -- an unanchored match can also hit an unrelated
-// button whose label happens to contain the nav label as a substring (e.g.
-// "Backup & Restore" also matches a disabled "Restore" button elsewhere).
+// Nav items render as <button>, not <a> -- exact: true avoids matching an
+// unrelated button whose label contains this one as a substring.
 export async function navigateTo(page: Page, label: string): Promise<void> {
   await page.getByRole('button', { name: label, exact: true }).click();
 }

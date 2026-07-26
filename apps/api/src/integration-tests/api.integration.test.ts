@@ -4,11 +4,8 @@ import bcrypt from 'bcrypt';
 import { app } from '../server';
 import { prisma } from '../db';
 
-// Everything else in src/tests/ mocks prisma -- these tests deliberately
-// don't, so they exercise the real Express routes, real middleware chain,
-// and real Postgres round-trip (schema drift, query correctness, JWT
-// issuance/verification) that mocked unit tests structurally can't catch.
-// Run with `pnpm test:integration`, not the default `pnpm test`.
+// Unlike src/tests/ (which mocks prisma), these hit real Express routes and
+// real Postgres. Run with `pnpm test:integration`, not `pnpm test`.
 
 const USERNAME = 'e2e-integration';
 const PIN = '1234';
@@ -149,9 +146,7 @@ describe('authenticated routes', () => {
     );
   });
 
-  // -------------------------------------------------------------------------
   // GET /reports/customer-balances
-  // -------------------------------------------------------------------------
   it('GET /reports/customer-balances returns a plain object keyed by customerId', async () => {
     const res = await fetch(`${baseUrl}/reports/customer-balances`, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -206,9 +201,7 @@ describe('authenticated routes', () => {
     await prisma.creditEntry.deleteMany({ where: { id: entryId } });
   });
 
-  // -------------------------------------------------------------------------
   // GET /reports/customer-credit-history/:customerId
-  // -------------------------------------------------------------------------
   it('GET /reports/customer-credit-history/:id returns an empty array for a customer with no history', async () => {
     const res = await fetch(`${baseUrl}/reports/customer-credit-history/${customerId}`, {
       headers: { Authorization: `Bearer ${accessToken}` },

@@ -1,7 +1,5 @@
 // Single source of truth for the app's display name -- change it here, not
-// in individual components. Matches apps/desktop's config/branding.ts (web
-// doesn't need the theme/logo fields desktop has, since it has no Logo
-// component or per-app theming).
+// in individual components.
 export interface Branding {
   appName: string;
   appShortName: string;

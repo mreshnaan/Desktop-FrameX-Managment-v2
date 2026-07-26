@@ -72,11 +72,8 @@ export interface PullResult {
   orderItems: OrderItemRow[];
 }
 
-// Web is a read-only analytics dashboard for every business view except User
-// Management (which reads/writes the API directly and never goes through
-// this hook) -- there is no local storage and nothing here ever writes back.
-// The desktop app is the single place a shift is actually run from; every
-// view here just fetches the current server state and derives what it needs.
+// Web is a read-only dashboard -- no local storage, nothing here writes
+// back. Desktop is the only place a shift is actually run from.
 export function usePullData() {
   const { state } = useAuth();
   return useQuery({

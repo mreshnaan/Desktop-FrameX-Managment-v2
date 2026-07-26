@@ -3,13 +3,9 @@ import { commands, type PulledRow } from '../tauri/commands';
 import { apiFetch, ApiError } from '../api/client';
 
 const CURSOR_KEY = 'cue-room-desktop-sync-cursor';
-// Order matters here: SQLite enforces foreign keys, so a table must be
-// applied strictly after every table it references, or apply_pulled_rows
-// fails outright on a genuinely empty local database (e.g. a fresh
-// install's first bootstrap pull) -- verified directly via the e2e suite,
-// not assumed: categories/stations/productCategories have no dependencies
-// and must go first; rates/sessions/products depend on them; orderItems/
-// stockMovements depend on orders/products in turn.
+// Order matters: SQLite enforces foreign keys, so a table must be applied
+// strictly after every table it references (categories/stations first;
+// orderItems/stockMovements last), or a fresh install's bootstrap pull fails.
 const TABLES = [
   'categories', 'stations', 'rates',
   'customers', 'sessions', 'expenses', 'creditEntries',
@@ -61,9 +57,7 @@ async function push(accessToken: string) {
     body: JSON.stringify({ entries }),
   });
 
-  // Only clear outbox rows the server actually applied -- entries reported
-  // in `failed` must stay so the next cycle retries them. Mirrors
-  // apps/web's syncEngine.ts push().
+  // Only clear outbox rows the server actually applied -- failed entries stay for retry.
   const failedKeys = new Set((result.failed ?? []).map(f => `${f.table}:${f.id}`));
   const idsToDelete = pending
     .filter(p => !failedKeys.has(`${p.tableName}:${p.entityId}`))
@@ -86,10 +80,8 @@ async function pull(accessToken: string) {
   localStorage.setItem(CURSOR_KEY, result.serverTime);
 }
 
-// Runs one pull cycle (no push -- a fresh install has nothing local to push
-// yet) so App.tsx's first-run gate can block rendering the main shell until
-// categories/stations/rates are actually populated. Mirrors apps/web's
-// runBootstrapPull.
+// Runs one pull cycle (no push -- nothing local to push on a fresh install)
+// so App.tsx's first-run gate can block rendering until data is populated.
 export async function runBootstrapPull(accessToken: string): Promise<void> {
   await pull(accessToken);
 }

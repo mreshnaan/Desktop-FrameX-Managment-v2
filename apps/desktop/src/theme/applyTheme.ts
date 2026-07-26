@@ -18,10 +18,8 @@ const CSS_VAR_MAP: Record<keyof ThemeTokens, string> = {
   sidebarBorder: '--sidebar-border', sidebarRing: '--sidebar-ring',
 };
 
-// Writes the active theme's tokens onto :root as CSS custom properties --
-// matches FrameX's theme/applyTheme.ts exactly (same token set, same
-// values). Called once at startup (main.tsx); re-call with a different
-// mode to support a future light/dark toggle.
+// Writes the active theme's tokens onto :root as CSS custom properties.
+// Called once at startup; re-call with a different mode for a future toggle.
 export function applyTheme(mode: 'light' | 'dark' = 'light') {
   const tokens = branding.theme[mode];
   const root = document.documentElement;

@@ -18,8 +18,8 @@ export default function ProductManagementView() {
 
   return (
     <div className="flex flex-col gap-6 p-4">
-      <NewCategoryCard onCreated={addCategory} />
-      <NewProductCard categories={categories} onCreated={addProduct} />
+      <NewCategoryCard onCreated={async name => { await addCategory.mutateAsync(name); }} />
+      <NewProductCard categories={categories} onCreated={async input => { await addProduct.mutateAsync(input); }} />
       {isLoading ? (
         <ListSkeleton />
       ) : (
@@ -40,8 +40,10 @@ export default function ProductManagementView() {
                   <ProductRowEditor
                     key={product.id}
                     product={product}
-                    onSave={updateProduct}
-                    onAdjustStock={adjustStock}
+                    onSave={async input => { await updateProduct.mutateAsync(input); }}
+                    onAdjustStock={async (productId, delta, reason, note) => {
+                      await adjustStock.mutateAsync({ productId, delta, reason, note });
+                    }}
                   />
                 ))}
               </CardContent>

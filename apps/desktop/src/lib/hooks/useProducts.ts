@@ -1,46 +1,57 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands, type ProductRow } from '../tauri/commands';
-import { useInvalidateAfter } from './useInvalidateAfter';
 
 export function useProducts() {
-  const invalidate = useInvalidateAfter([['product-categories'], ['products']]);
+  const qc = useQueryClient();
   const categoriesQuery = useQuery({ queryKey: ['product-categories'], queryFn: () => commands.listProductCategories() });
   const productsQuery = useQuery({ queryKey: ['products'], queryFn: () => commands.listProducts() });
 
-  async function addCategory(name: string) {
-    await invalidate(() => commands.createProductCategory(name));
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ['product-categories'] });
+    qc.invalidateQueries({ queryKey: ['products'] });
   }
 
-  async function addProduct(input: {
-    categoryId: string;
-    name: string;
-    price: number;
-    cost: number | null;
-    lowStockThreshold: number;
-    barcode: string | null;
-  }) {
-    await invalidate(() => commands.createProduct(
-      input.categoryId, input.name, input.price, input.cost, input.lowStockThreshold, input.barcode,
-    ));
-  }
+  const addCategory = useMutation({
+    mutationFn: (name: string) => commands.createProductCategory(name),
+    onSuccess: invalidate,
+  });
 
-  async function updateProduct(input: {
-    id: string;
-    name: string;
-    price: number;
-    cost: number | null;
-    lowStockThreshold: number;
-    barcode: string | null;
-    active: boolean;
-  }) {
-    await invalidate(() => commands.updateProduct(
-      input.id, input.name, input.price, input.cost, input.lowStockThreshold, input.barcode, input.active,
-    ));
-  }
+  const addProduct = useMutation({
+    mutationFn: (input: {
+      categoryId: string;
+      name: string;
+      price: number;
+      cost: number | null;
+      lowStockThreshold: number;
+      barcode: string | null;
+    }) =>
+      commands.createProduct(
+        input.categoryId, input.name, input.price, input.cost, input.lowStockThreshold, input.barcode,
+      ),
+    onSuccess: invalidate,
+  });
 
-  async function adjustStock(productId: string, delta: number, reason: string, note: string | null) {
-    await invalidate(() => commands.adjustStock(productId, delta, reason, note));
-  }
+  const updateProduct = useMutation({
+    mutationFn: (input: {
+      id: string;
+      name: string;
+      price: number;
+      cost: number | null;
+      lowStockThreshold: number;
+      barcode: string | null;
+      active: boolean;
+    }) =>
+      commands.updateProduct(
+        input.id, input.name, input.price, input.cost, input.lowStockThreshold, input.barcode, input.active,
+      ),
+    onSuccess: invalidate,
+  });
+
+  const adjustStock = useMutation({
+    mutationFn: (input: { productId: string; delta: number; reason: string; note: string | null }) =>
+      commands.adjustStock(input.productId, input.delta, input.reason, input.note),
+    onSuccess: invalidate,
+  });
 
   return {
     categories: categoriesQuery.data ?? [],

@@ -27,7 +27,7 @@ export default function CustomersView() {
   });
 
   async function onSubmit(data: { name: string; phone?: string }) {
-    await addCustomer({ name: data.name, phone: data.phone || '' });
+    await addCustomer.mutateAsync({ name: data.name, phone: data.phone || '' });
     reset();
   }
 
@@ -47,7 +47,7 @@ export default function CustomersView() {
             variant="ghost"
             size="icon"
             aria-label={`Delete ${info.row.original.name}`}
-            onClick={() => deleteCustomer(info.row.original.id)}
+            onClick={() => deleteCustomer.mutate(info.row.original.id)}
           >
             <Trash2 className="text-destructive" />
           </Button>
@@ -87,7 +87,7 @@ export default function CustomersView() {
                 <FieldError errors={toFieldErrors(errors.phone)} />
               </Field>
             </FieldGroup>
-            <Button type="submit" variant="outline" disabled={isSubmitting} className="self-start">
+            <Button type="submit" variant="outline" disabled={isSubmitting || addCustomer.isPending} className="self-start">
               Add customer
             </Button>
           </form>

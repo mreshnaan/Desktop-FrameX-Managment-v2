@@ -1,12 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands, type CustomerHistoryRow } from '../tauri/commands';
-import { useInvalidateAfter } from './useInvalidateAfter';
 
 // Balances are pre-aggregated in SQLite via get_customer_balances --
 // balanceFor is just a direct property lookup, no client-side computation.
 export function useCustomers() {
-  const invalidateCustomers = useInvalidateAfter([['customers'], ['customer-balances']]);
-  const invalidateCreditEntries = useInvalidateAfter([['credit-entries'], ['customer-balances']]);
+  const qc = useQueryClient();
 
   const customersQuery = useQuery({
     queryKey: ['customers'],
@@ -23,22 +21,35 @@ export function useCustomers() {
     queryFn: () => commands.listCreditEntries(),
   });
 
-  async function addCustomer(input: { name: string; phone?: string }) {
-    await invalidateCustomers(() => commands.createCustomer(input.name, input.phone ?? ''));
-  }
+  const addCustomer = useMutation({
+    mutationFn: (input: { name: string; phone?: string }) =>
+      commands.createCustomer(input.name, input.phone ?? ''),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['customer-balances'] });
+    },
+  });
 
-  async function deleteCustomer(id: string) {
-    await invalidateCustomers(() => commands.deleteCustomer(id));
-  }
+  const deleteCustomer = useMutation({
+    mutationFn: (id: string) => commands.deleteCustomer(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['customer-balances'] });
+    },
+  });
 
-  async function adjustCustomer(
-    customerId: string,
-    date: string,
-    type: 'CREDIT_GIVEN' | 'PAYMENT_RECEIVED',
-    amount: number,
-  ) {
-    await invalidateCreditEntries(() => commands.createCreditEntry(customerId, date, type, amount));
-  }
+  const adjustCustomer = useMutation({
+    mutationFn: (input: {
+      customerId: string;
+      date: string;
+      type: 'CREDIT_GIVEN' | 'PAYMENT_RECEIVED';
+      amount: number;
+    }) => commands.createCreditEntry(input.customerId, input.date, input.type, input.amount),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['credit-entries'] });
+      qc.invalidateQueries({ queryKey: ['customer-balances'] });
+    },
+  });
 
   const balances: Record<string, number> = balancesQuery.data ?? {};
 

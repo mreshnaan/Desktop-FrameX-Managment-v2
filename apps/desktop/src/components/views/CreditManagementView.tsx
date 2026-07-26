@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseMutationResult } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -18,12 +18,11 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldGroup, FieldLabel, FieldError } from '@/components/ui/field';
 
-type AdjustCustomerFn = (
-  customerId: string,
-  date: string,
-  type: CreditEntry['type'],
-  amount: number
-) => Promise<void>;
+type AdjustCustomerFn = UseMutationResult<
+  CreditEntry,
+  Error,
+  { customerId: string; date: string; type: CreditEntry['type']; amount: number }
+>;
 
 export default function CreditManagementView() {
   const { customers, adjustCustomer, balanceFor } = useCustomers();
@@ -83,12 +82,12 @@ function CustomerCreditCard({
   const rows: CustomerHistoryRow[] = historyQuery.data ?? [];
 
   const onGiveCredit = handleSubmit(async data => {
-    await adjustCustomer(customer.id, todayStr(), 'CREDIT_GIVEN', data.amount);
+    await adjustCustomer.mutateAsync({ customerId: customer.id, date: todayStr(), type: 'CREDIT_GIVEN', amount: data.amount });
     reset();
   });
 
   const onRecordPayment = handleSubmit(async data => {
-    await adjustCustomer(customer.id, todayStr(), 'PAYMENT_RECEIVED', data.amount);
+    await adjustCustomer.mutateAsync({ customerId: customer.id, date: todayStr(), type: 'PAYMENT_RECEIVED', amount: data.amount });
     reset();
   });
 
@@ -123,10 +122,10 @@ function CustomerCreditCard({
             <FieldError errors={toFieldErrors(errors.amount)} />
           </Field>
           <div className="flex gap-2">
-            <Button type="button" variant="outline" disabled={isSubmitting} onClick={onGiveCredit}>
+            <Button type="button" variant="outline" disabled={isSubmitting || adjustCustomer.isPending} onClick={onGiveCredit}>
               Give credit
             </Button>
-            <Button type="button" variant="outline" disabled={isSubmitting} onClick={onRecordPayment}>
+            <Button type="button" variant="outline" disabled={isSubmitting || adjustCustomer.isPending} onClick={onRecordPayment}>
               Record payment
             </Button>
           </div>

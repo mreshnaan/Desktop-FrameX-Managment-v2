@@ -50,7 +50,7 @@ export function DataTable<TData>({
         {table.getRowModel().rows.map(row => (
           <TableRow
             key={row.id}
-            className={onRowClick ? rowClassName : undefined}
+            className={rowClassName}
             onClick={onRowClick ? () => onRowClick(row.original) : undefined}
           >
             {row.getVisibleCells().map(cell => (

@@ -367,6 +367,7 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
       {/* Main Breakdown Table */}
       <Card>
         <CardContent className="px-0">
+          {/* columns and activeTableData must derive from the same filter value -- the cast asserts it */}
           <DataTable
             columns={columns as ColumnDef<AnyDayRow>[]}
             data={activeTableData}

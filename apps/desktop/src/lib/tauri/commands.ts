@@ -1,4 +1,8 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import type { Session } from '../shared/schemas/session.schema';
+import type { Expense } from '../shared/schemas/expense.schema';
+import type { Customer } from '../shared/schemas/customer.schema';
+import type { CreditEntry } from '../shared/schemas/creditEntry.schema';
 
 // Tauri rejects with a raw string, not an Error -- normalize once here so
 // every view's `e instanceof Error` catch block gets the real message.
@@ -22,7 +26,19 @@ export interface StationRow {
   name: string;
 }
 
+// Canonical field names (hour/half/value), matching lib/shared/schemas/rate.schema.ts,
+// Postgres, and web -- translated at this boundary since Rust's own struct mirrors
+// SQLite's local column names (hour_rate/half_rate/frame_rate) instead.
 export interface RateRow {
+  id: string;
+  categoryId: string;
+  hour: number | null;
+  half: number | null;
+  value: number | null;
+  updatedAt: string;
+}
+
+interface RawRateRow {
   id: string;
   categoryId: string;
   hourRate: number | null;
@@ -31,25 +47,15 @@ export interface RateRow {
   updatedAt: string;
 }
 
-export interface CustomerRow {
-  id: string;
-  name: string;
-  phone: string;
-  updatedAt: string;
-  deletedAt: string | null;
-}
-
-export interface SessionRow {
-  id: string;
-  stationId: string;
-  date: string;
-  start: string;
-  end: string;
-  amount: number;
-  method: 'Cash' | 'Card' | 'Credit';
-  customerId: string | null;
-  updatedAt: string;
-  deletedAt: string | null;
+function toRateRow(raw: RawRateRow): RateRow {
+  return {
+    id: raw.id,
+    categoryId: raw.categoryId,
+    hour: raw.hourRate,
+    half: raw.halfRate,
+    value: raw.frameRate,
+    updatedAt: raw.updatedAt,
+  };
 }
 
 export interface SessionPatch {
@@ -58,25 +64,6 @@ export interface SessionPatch {
   amount?: number;
   method?: string;
   customerId?: string | null;
-}
-
-export interface ExpenseRow {
-  id: string;
-  date: string;
-  description: string;
-  amount: number;
-  method: 'Cash' | 'Card';
-  updatedAt: string;
-  deletedAt: string | null;
-}
-
-export interface CreditEntryRow {
-  id: string;
-  customerId: string;
-  date: string;
-  type: 'CREDIT_GIVEN' | 'PAYMENT_RECEIVED';
-  amount: number;
-  updatedAt: string;
 }
 
 export interface OutboxEntryRow {
@@ -181,42 +168,42 @@ export const commands = {
   getBackupDir: () => invoke<string>('get_backup_dir'),
 
   // Rates
-  listRates: () => invoke<RateRow[]>('list_rates'),
-  upsertRate: (
+  listRates: async () => (await invoke<RawRateRow[]>('list_rates')).map(toRateRow),
+  upsertRate: async (
     categoryId: string,
-    hourRate: number | null,
-    halfRate: number | null,
-    frameRate: number | null,
-  ) => invoke<RateRow>('upsert_rate', { categoryId, hourRate, halfRate, frameRate }),
+    hour: number | null,
+    half: number | null,
+    value: number | null,
+  ) => toRateRow(await invoke<RawRateRow>('upsert_rate', { categoryId, hourRate: hour, halfRate: half, frameRate: value })),
 
   // Customers
-  listCustomers: () => invoke<CustomerRow[]>('list_customers'),
-  createCustomer: (name: string, phone: string) => invoke<CustomerRow>('create_customer', { name, phone }),
+  listCustomers: () => invoke<Customer[]>('list_customers'),
+  createCustomer: (name: string, phone: string) => invoke<Customer>('create_customer', { name, phone }),
   deleteCustomer: (id: string) => invoke<void>('delete_customer', { id }),
 
   // Sessions
-  listAllSessions: () => invoke<SessionRow[]>('list_all_sessions'),
+  listAllSessions: () => invoke<Session[]>('list_all_sessions'),
   listSessionsBetween: (startDate: string, endDate: string) =>
-    invoke<SessionRow[]>('list_sessions_between', { startDate, endDate }),
-  listSessionsForDate: (date: string) => invoke<SessionRow[]>('list_sessions_for_date', { date }),
+    invoke<Session[]>('list_sessions_between', { startDate, endDate }),
+  listSessionsForDate: (date: string) => invoke<Session[]>('list_sessions_for_date', { date }),
   createSession: (stationId: string, categoryId: string, billingType: string, date: string) =>
-    invoke<SessionRow>('create_session', { stationId, categoryId, billingType, date }),
-  updateSession: (id: string, patch: SessionPatch) => invoke<SessionRow>('update_session', { id, patch }),
+    invoke<Session>('create_session', { stationId, categoryId, billingType, date }),
+  updateSession: (id: string, patch: SessionPatch) => invoke<Session>('update_session', { id, patch }),
   deleteSession: (id: string) => invoke<void>('delete_session', { id }),
 
   // Expenses
-  listExpensesForDate: (date: string) => invoke<ExpenseRow[]>('list_expenses_for_date', { date }),
+  listExpensesForDate: (date: string) => invoke<Expense[]>('list_expenses_for_date', { date }),
   listExpensesBetween: (startDate: string, endDate: string) =>
-    invoke<ExpenseRow[]>('list_expenses_between', { startDate, endDate }),
-  createExpense: (date: string) => invoke<ExpenseRow>('create_expense', { date }),
+    invoke<Expense[]>('list_expenses_between', { startDate, endDate }),
+  createExpense: (date: string) => invoke<Expense>('create_expense', { date }),
   updateExpense: (id: string, description?: string, amount?: number, method?: string) =>
-    invoke<ExpenseRow>('update_expense', { id, description, amount, method }),
+    invoke<Expense>('update_expense', { id, description, amount, method }),
   deleteExpense: (id: string) => invoke<void>('delete_expense', { id }),
 
   // Credit entries
-  listCreditEntries: () => invoke<CreditEntryRow[]>('list_credit_entries'),
+  listCreditEntries: () => invoke<CreditEntry[]>('list_credit_entries'),
   createCreditEntry: (customerId: string, date: string, entryType: string, amount: number) =>
-    invoke<CreditEntryRow>('create_credit_entry', { customerId, date, entryType, amount }),
+    invoke<CreditEntry>('create_credit_entry', { customerId, date, entryType, amount }),
 
   // Sync
   drainOutbox: () => invoke<OutboxEntryRow[]>('drain_outbox'),

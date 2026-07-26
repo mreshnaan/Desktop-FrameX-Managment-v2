@@ -8,9 +8,9 @@ import { Field, FieldGroup, FieldLabel, FieldError } from '@/components/ui/field
 
 type SetRateFn = (row: {
   categoryId: string;
-  hourRate: number | null;
-  halfRate: number | null;
-  frameRate: number | null;
+  hour: number | null;
+  half: number | null;
+  value: number | null;
 }) => Promise<void>;
 
 export default function RateManagementView() {
@@ -36,15 +36,15 @@ function TimeRateCard({ row, setRate }: { row: RateWithCategory; setRate: SetRat
     formState: { errors },
   } = useForm<TimeRateInput>({
     resolver: zodResolver(TimeRateSchema),
-    defaultValues: { categoryId: row.categoryId, hour: row.hourRate ?? 0, half: row.halfRate ?? 0 },
+    defaultValues: { categoryId: row.categoryId, hour: row.hour ?? 0, half: row.half ?? 0 },
   });
 
   async function onSubmit(data: TimeRateInput) {
     await setRate({
       categoryId: row.categoryId,
-      hourRate: data.hour,
-      halfRate: data.half,
-      frameRate: null,
+      hour: data.hour,
+      half: data.half,
+      value: null,
     });
   }
 
@@ -96,15 +96,15 @@ function FrameRateCard({ row, setRate }: { row: RateWithCategory; setRate: SetRa
     formState: { errors },
   } = useForm<FrameRateInput>({
     resolver: zodResolver(FrameRateSchema),
-    defaultValues: { categoryId: row.categoryId, value: row.frameRate ?? 0 },
+    defaultValues: { categoryId: row.categoryId, value: row.value ?? 0 },
   });
 
   async function onSubmit(data: FrameRateInput) {
     await setRate({
       categoryId: row.categoryId,
-      hourRate: null,
-      halfRate: null,
-      frameRate: data.value,
+      hour: null,
+      half: null,
+      value: data.value,
     });
   }
 

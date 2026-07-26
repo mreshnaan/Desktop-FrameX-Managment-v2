@@ -462,6 +462,40 @@ describe('authenticated routes', () => {
     await prisma.productCategory.deleteMany({ where: { id: categoryId } });
   });
 
+  it('a pushed order item metadata payload round-trips into the OrderItem row', async () => {
+    const categoryId = crypto.randomUUID();
+    const productId = crypto.randomUUID();
+    const orderId = crypto.randomUUID();
+    const itemId = crypto.randomUUID();
+
+    await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [
+          { table: 'productCategories', op: 'upsert', id: categoryId, payload: { id: categoryId, name: 'E2E Integration Category' }, clientUpdatedAt: new Date().toISOString() },
+          { table: 'products', op: 'upsert', id: productId, payload: { id: productId, categoryId, name: 'E2E Integration Product', price: 50, cost: null, stockQty: 0, lowStockThreshold: 0, barcode: null, active: true }, clientUpdatedAt: new Date().toISOString() },
+          { table: 'orders', op: 'upsert', id: orderId, payload: { id: orderId, method: 'Cash', total: 100, customerId: null }, clientUpdatedAt: new Date().toISOString() },
+          {
+            table: 'orderItems', op: 'upsert', id: itemId,
+            payload: {
+              id: itemId, orderId, productId, qty: 2, unitPrice: 50, lineTotal: 100,
+              metadata: { productName: 'Test Product', categoryId, unitPrice: 50 },
+            },
+            clientUpdatedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    });
+
+    const row = await prisma.orderItem.findUniqueOrThrow({ where: { id: itemId } });
+    expect(row.metadata).toEqual({ productName: 'Test Product', categoryId, unitPrice: 50 });
+
+    await prisma.order.deleteMany({ where: { id: orderId } });
+    await prisma.product.deleteMany({ where: { id: productId } });
+    await prisma.productCategory.deleteMany({ where: { id: categoryId } });
+  });
+
   it('GET /orders excludes soft-deleted orders', async () => {
     const orderId = crypto.randomUUID();
     await fetch(`${baseUrl}/sync/push`, {

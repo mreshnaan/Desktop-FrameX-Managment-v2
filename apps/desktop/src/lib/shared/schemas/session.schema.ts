@@ -11,7 +11,7 @@ const sessionBaseSchema = z.object({
   customerId: z.string().uuid().nullable(),
   updatedAt: z.string().datetime().optional(),
   deletedAt: z.string().datetime().nullable().optional(),
-  metadata: z.string().nullable(),
+  metadata: z.string().nullable().optional(),
 });
 
 const checkCreditCustomer = (data: {

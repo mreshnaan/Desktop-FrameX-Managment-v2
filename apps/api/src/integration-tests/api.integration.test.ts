@@ -290,4 +290,48 @@ describe('authenticated routes', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  // -------------------------------------------------------------------------
+  // GET /expenses
+  // -------------------------------------------------------------------------
+  it('GET /expenses returns only expenses for the requested date', async () => {
+    const inRangeId = crypto.randomUUID();
+    const outOfRangeId = crypto.randomUUID();
+
+    await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [
+          {
+            table: 'expenses', op: 'upsert', id: inRangeId,
+            payload: { id: inRangeId, date: '2026-07-01', description: 'E2E in range', amount: 50, method: 'Cash' },
+            clientUpdatedAt: new Date().toISOString(),
+          },
+          {
+            table: 'expenses', op: 'upsert', id: outOfRangeId,
+            payload: { id: outOfRangeId, date: '2026-07-02', description: 'E2E out of range', amount: 75, method: 'Cash' },
+            clientUpdatedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    });
+
+    const res = await fetch(`${baseUrl}/expenses?date=2026-07-01`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.status).toBe(200);
+    const expenses = await json<{ id: string; date: string }[]>(res);
+    expect(expenses.some(e => e.id === inRangeId)).toBe(true);
+    expect(expenses.some(e => e.id === outOfRangeId)).toBe(false);
+
+    await prisma.expense.deleteMany({ where: { id: { in: [inRangeId, outOfRangeId] } } });
+  });
+
+  it('GET /expenses returns 400 when date is missing', async () => {
+    const res = await fetch(`${baseUrl}/expenses`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.status).toBe(400);
+  });
 });

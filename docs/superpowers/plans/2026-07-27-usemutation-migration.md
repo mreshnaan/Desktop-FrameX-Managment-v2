@@ -1095,7 +1095,7 @@ export default function BackupSettingsView() {
           {dirQuery.data && (
             <p className="text-sm text-muted-foreground">Backups are stored at {dirQuery.data}</p>
           )}
-          <Button type="button" disabled={backup.isPending} onClick={() => backup.mutate()} className="self-start">
+          <Button type="button" disabled={backup.isPending || restore.isPending} onClick={() => backup.mutate()} className="self-start">
             Back up now
           </Button>
           {backup.isSuccess && <p className="text-sm text-muted-foreground">Backup created: {backup.data.filename}</p>}

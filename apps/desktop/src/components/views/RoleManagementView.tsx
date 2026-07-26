@@ -83,6 +83,8 @@ function NewRoleCard({ onCreated }: { onCreated: () => void }) {
   const [name, setName] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  // permissionIds must be real Permission row ids, not keys -- fetch once so
+  // we can map the checked keys to the ids the api expects.
   const permissionsQuery = useQuery({
     queryKey: ['admin-permissions'],
     queryFn: () => apiFetch<{ id: string; key: string }[]>('/roles/permissions', { accessToken }),

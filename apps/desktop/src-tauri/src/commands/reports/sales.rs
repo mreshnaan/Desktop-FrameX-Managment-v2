@@ -43,7 +43,7 @@ pub(crate) async fn do_get_monthly_report(
     end_utc: String,
 ) -> Result<MonthlyReportResult, String> {
     let session_totals = sqlx::query_as::<_, DailyCategoryTotal>(
-        "SELECT
+        "SELECT 
             s.date as date,
             st.category_id as category_id,
             s.method as method,
@@ -60,7 +60,7 @@ pub(crate) async fn do_get_monthly_report(
     .map_err(|e| e.to_string())?;
 
     let expense_totals = sqlx::query_as::<_, DailyExpenseTotal>(
-        "SELECT
+        "SELECT 
             date,
             method,
             CAST(SUM(amount) AS INTEGER) as total
@@ -75,7 +75,7 @@ pub(crate) async fn do_get_monthly_report(
     .map_err(|e| e.to_string())?;
 
     let cafe_totals = sqlx::query_as::<_, DailyCafeTotal>(
-        "SELECT
+        "SELECT 
             substr(o.updated_at, 1, 10) as date,
             o.method as method,
             CAST(SUM(o.total) AS INTEGER) as total,

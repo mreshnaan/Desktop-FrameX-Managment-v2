@@ -1,7 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands, type CartItemInput } from '../tauri/commands';
 import { dateStrOf, localDateRangeToUtc } from '../shared/utils/dates';
-import { useInvalidateAfter } from './useInvalidateAfter';
 
 // Orders have no `date` column -- updatedAt (a UTC instant) is the day they
 // belong to. Read via local calendar date, not a UTC substring (see
@@ -17,14 +16,20 @@ export function orderTimeOf(updatedAt: string): string {
 // Only exposes checkout -- CafeView never reads back a list (the cart lives
 // in useCart()); see useOrdersBetween below for historical reads.
 export function useOrders() {
+  const qc = useQueryClient();
+
   // Invalidating the ['orders']/['order-items'] prefixes also catches
   // useOrdersBetween's more specific keys. Checkout decrements stock
   // server-side too, so ['products'] is invalidated alongside them.
-  const invalidate = useInvalidateAfter([['orders'], ['order-items'], ['products']]);
-
-  async function checkout(items: CartItemInput[], method: string, customerId: string | null) {
-    return invalidate(() => commands.createOrder(items, method, customerId));
-  }
+  const checkout = useMutation({
+    mutationFn: (input: { items: CartItemInput[]; method: string; customerId: string | null }) =>
+      commands.createOrder(input.items, input.method, input.customerId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['order-items'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
 
   return { checkout };
 }

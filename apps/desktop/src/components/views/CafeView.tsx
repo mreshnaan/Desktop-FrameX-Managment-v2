@@ -19,8 +19,7 @@ export default function CafeView() {
   const [search, setSearch] = useState('');
   const [method, setMethod] = useState<'Cash' | 'Card' | 'Credit'>('Cash');
   const [customerId, setCustomerId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const filteredProducts = useMemo(() => {
     if (!search.trim()) return null;
@@ -38,24 +37,21 @@ export default function CafeView() {
   async function completeSale() {
     if (lines.length === 0) return;
     if (method === 'Credit' && !customerId) {
-      setError('A customer must be selected for Credit sales');
+      setValidationError('A customer must be selected for Credit sales');
       return;
     }
-    setSubmitting(true);
-    setError(null);
+    setValidationError(null);
     try {
-      await checkout(
-        lines.map(l => ({ productId: l.product.id, qty: l.qty })),
+      await checkout.mutateAsync({
+        items: lines.map(l => ({ productId: l.product.id, qty: l.qty })),
         method,
-        method === 'Credit' ? customerId : null,
-      );
+        customerId: method === 'Credit' ? customerId : null,
+      });
       clearCart();
       setMethod('Cash');
       setCustomerId(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Checkout failed');
-    } finally {
-      setSubmitting(false);
+    } catch {
+      // checkout.error is already populated; nothing further to do here
     }
   }
 
@@ -155,9 +151,11 @@ export default function CafeView() {
             </Select>
           )}
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {(validationError || checkout.error) && (
+            <p className="text-sm text-destructive">{validationError ?? checkout.error?.message}</p>
+          )}
 
-          <Button type="button" disabled={submitting || lines.length === 0} onClick={completeSale}>
+          <Button type="button" disabled={checkout.isPending || lines.length === 0} onClick={completeSale}>
             Complete sale
           </Button>
         </CardContent>

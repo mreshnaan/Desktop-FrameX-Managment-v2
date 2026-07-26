@@ -1,16 +1,18 @@
-import { useMemo } from 'react';
-import { usePullData } from './usePullData';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/lib/auth/useAuth';
+import { apiFetch } from '@/lib/api/client';
+import type { Session } from '@/lib/shared';
 
-// Read-only: sessions are created/edited on the desktop app at the front
-// desk -- web only displays them, grouped by category/station for the
-// Daily Sales analytics view.
+// Read-only: sessions are created/edited on the desktop app -- web only
+// displays them, bounded to one day via GET /sessions?date=.
 export function useSessions(date: string) {
-  const query = usePullData();
+  const { state } = useAuth();
 
-  const sessions = useMemo(
-    () => (query.data?.sessions ?? []).filter(s => !s.deletedAt && s.date === date),
-    [query.data, date],
-  );
+  const query = useQuery({
+    queryKey: ['sessions', date],
+    queryFn: () => apiFetch<Session[]>(`/sessions?date=${date}`, { accessToken: state.accessToken }),
+    enabled: !!state.accessToken,
+  });
 
-  return { sessions, isLoading: query.isLoading };
+  return { sessions: query.data ?? [], isLoading: query.isLoading };
 }

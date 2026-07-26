@@ -8,6 +8,7 @@ import {
   addMinutesToTime,
   durationMinutes,
   groupBy,
+  toFieldErrors,
   type Session,
   type Customer,
   type Billing,
@@ -503,7 +504,7 @@ function SessionRow({
           </Button>
         </div>
       )}
-      <FieldError errors={error ? [{ message: error }] : undefined} />
+      <FieldError errors={toFieldErrors(error)} />
     </div>
   );
 }

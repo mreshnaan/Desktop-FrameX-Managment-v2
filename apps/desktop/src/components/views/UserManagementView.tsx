@@ -3,7 +3,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createColumnHelper, type ColumnDef } from '@tanstack/react-table';
-import { CreateUserSchema, type CreateUserInput } from '@/lib/shared';
+import { CreateUserSchema, toFieldErrors, type CreateUserInput } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
 import { apiFetch } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
@@ -97,10 +97,10 @@ export default function UserManagementView() {
                 <Input
                   id="user-name"
                   placeholder="Full name"
-                  aria-invalid={!!errors.name}
+                  aria-invalid={!!toFieldErrors(errors.name)}
                   {...register('name')}
                 />
-                <FieldError errors={errors.name ? [errors.name] : undefined} />
+                <FieldError errors={toFieldErrors(errors.name)} />
               </Field>
               <Field>
                 <FieldLabel htmlFor="user-username">Username</FieldLabel>
@@ -109,10 +109,10 @@ export default function UserManagementView() {
                   type="text"
                   autoComplete="username"
                   placeholder="username"
-                  aria-invalid={!!errors.username}
+                  aria-invalid={!!toFieldErrors(errors.username)}
                   {...register('username')}
                 />
-                <FieldError errors={errors.username ? [errors.username] : undefined} />
+                <FieldError errors={toFieldErrors(errors.username)} />
               </Field>
               <Field>
                 <FieldLabel htmlFor="user-pin">PIN</FieldLabel>
@@ -120,10 +120,10 @@ export default function UserManagementView() {
                   name="pin"
                   control={control}
                   render={({ field }) => (
-                    <PinInput id="user-pin" value={field.value} onChange={field.onChange} aria-invalid={!!errors.pin} />
+                    <PinInput id="user-pin" value={field.value} onChange={field.onChange} aria-invalid={!!toFieldErrors(errors.pin)} />
                   )}
                 />
-                <FieldError errors={errors.pin ? [errors.pin] : undefined} />
+                <FieldError errors={toFieldErrors(errors.pin)} />
               </Field>
               <Field>
                 <FieldLabel htmlFor="user-role">Role</FieldLabel>
@@ -132,7 +132,7 @@ export default function UserManagementView() {
                   control={control}
                   render={({ field }) => (
                     <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger id="user-role" aria-invalid={!!errors.roleId}>
+                      <SelectTrigger id="user-role" aria-invalid={!!toFieldErrors(errors.roleId)}>
                         <SelectValue placeholder="Select role" />
                       </SelectTrigger>
                       <SelectContent>
@@ -145,7 +145,7 @@ export default function UserManagementView() {
                     </Select>
                   )}
                 />
-                <FieldError errors={errors.roleId ? [errors.roleId] : undefined} />
+                <FieldError errors={toFieldErrors(errors.roleId)} />
               </Field>
             </FieldGroup>
             {formError && (

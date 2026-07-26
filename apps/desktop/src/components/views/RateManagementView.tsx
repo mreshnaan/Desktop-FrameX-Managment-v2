@@ -1,6 +1,6 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { TimeRateSchema, FrameRateSchema, type TimeRateInput, type FrameRateInput } from '@/lib/shared';
+import { TimeRateSchema, FrameRateSchema, toFieldErrors, type TimeRateInput, type FrameRateInput } from '@/lib/shared';
 import { useRates, type RateWithCategory } from '@/lib/hooks/useRates';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -63,11 +63,11 @@ function TimeRateCard({ row, setRate }: { row: RateWithCategory; setRate: SetRat
                 type="number"
                 min={0}
                 step={1}
-                aria-invalid={!!errors.hour}
+                aria-invalid={!!toFieldErrors(errors.hour)}
                 {...register('hour')}
                 onBlur={handleSubmit(onSubmit)}
               />
-              <FieldError errors={errors.hour ? [errors.hour] : undefined} />
+              <FieldError errors={toFieldErrors(errors.hour)} />
             </Field>
             <Field className="@md/field-group:max-w-40">
               <FieldLabel htmlFor={`half-${row.categoryId}`}>Rate per 30 min</FieldLabel>
@@ -76,11 +76,11 @@ function TimeRateCard({ row, setRate }: { row: RateWithCategory; setRate: SetRat
                 type="number"
                 min={0}
                 step={1}
-                aria-invalid={!!errors.half}
+                aria-invalid={!!toFieldErrors(errors.half)}
                 {...register('half')}
                 onBlur={handleSubmit(onSubmit)}
               />
-              <FieldError errors={errors.half ? [errors.half] : undefined} />
+              <FieldError errors={toFieldErrors(errors.half)} />
             </Field>
           </FieldGroup>
         </form>
@@ -122,11 +122,11 @@ function FrameRateCard({ row, setRate }: { row: RateWithCategory; setRate: SetRa
               type="number"
               min={0}
               step={1}
-              aria-invalid={!!errors.value}
+              aria-invalid={!!toFieldErrors(errors.value)}
               {...register('value')}
               onBlur={handleSubmit(onSubmit)}
             />
-            <FieldError errors={errors.value ? [errors.value] : undefined} />
+            <FieldError errors={toFieldErrors(errors.value)} />
           </Field>
         </form>
       </CardContent>

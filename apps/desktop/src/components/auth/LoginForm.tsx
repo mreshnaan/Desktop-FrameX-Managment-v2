@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { LoginSchema, type LoginInput } from '@/lib/shared';
+import { LoginSchema, toFieldErrors, type LoginInput } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,10 +53,10 @@ export default function LoginForm() {
                   type="text"
                   autoComplete="username"
                   placeholder="username"
-                  aria-invalid={!!errors.username}
+                  aria-invalid={!!toFieldErrors(errors.username)}
                   {...register('username')}
                 />
-                <FieldError errors={errors.username ? [errors.username] : undefined} />
+                <FieldError errors={toFieldErrors(errors.username)} />
               </Field>
               <Field>
                 <FieldLabel htmlFor="login-pin">PIN</FieldLabel>
@@ -68,11 +68,11 @@ export default function LoginForm() {
                       id="login-pin"
                       value={field.value}
                       onChange={field.onChange}
-                      aria-invalid={!!errors.pin}
+                      aria-invalid={!!toFieldErrors(errors.pin)}
                     />
                   )}
                 />
-                <FieldError errors={errors.pin ? [errors.pin] : undefined} />
+                <FieldError errors={toFieldErrors(errors.pin)} />
               </Field>
             </FieldGroup>
             {formError && (

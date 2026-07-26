@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createColumnHelper, type ColumnDef } from '@tanstack/react-table';
 import { Trash2 } from 'lucide-react';
-import { CustomerDraftSchema, type Customer } from '@/lib/shared';
+import { CustomerDraftSchema, toFieldErrors, type Customer } from '@/lib/shared';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,20 +71,20 @@ export default function CustomersView() {
                 <Input
                   id="customer-name"
                   placeholder="Customer name"
-                  aria-invalid={!!errors.name}
+                  aria-invalid={!!toFieldErrors(errors.name)}
                   {...register('name')}
                 />
-                <FieldError errors={errors.name ? [errors.name] : undefined} />
+                <FieldError errors={toFieldErrors(errors.name)} />
               </Field>
               <Field>
                 <FieldLabel htmlFor="customer-phone">Phone</FieldLabel>
                 <Input
                   id="customer-phone"
                   placeholder="Phone (optional)"
-                  aria-invalid={!!errors.phone}
+                  aria-invalid={!!toFieldErrors(errors.phone)}
                   {...register('phone')}
                 />
-                <FieldError errors={errors.phone ? [errors.phone] : undefined} />
+                <FieldError errors={toFieldErrors(errors.phone)} />
               </Field>
             </FieldGroup>
             <Button type="submit" variant="outline" disabled={isSubmitting} className="self-start">

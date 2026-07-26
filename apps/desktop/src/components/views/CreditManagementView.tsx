@@ -6,6 +6,7 @@ import {
   CreditDraftSchema,
   formatCurrency,
   todayStr,
+  toFieldErrors,
   type Customer,
   type CreditDraft,
   type CreditEntry,
@@ -116,10 +117,10 @@ function CustomerCreditCard({
               min={1}
               step={1}
               placeholder="0"
-              aria-invalid={!!errors.amount}
+              aria-invalid={!!toFieldErrors(errors.amount)}
               {...register('amount')}
             />
-            <FieldError errors={errors.amount ? [errors.amount] : undefined} />
+            <FieldError errors={toFieldErrors(errors.amount)} />
           </Field>
           <div className="flex gap-2">
             <Button type="button" variant="outline" disabled={isSubmitting} onClick={onGiveCredit}>

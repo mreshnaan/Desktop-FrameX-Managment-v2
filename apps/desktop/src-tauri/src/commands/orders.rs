@@ -4,7 +4,7 @@ use crate::commands::sync::enqueue_outbox_tx;
 use crate::models::{Order, OrderItem, OrderWithItems, Product};
 use serde::Deserialize;
 use serde_json::json;
-use sqlx::SqlitePool;
+use sqlx::{Sqlite, SqlitePool, Transaction};
 use tauri::State;
 use uuid::Uuid;
 
@@ -13,6 +13,163 @@ use uuid::Uuid;
 pub struct CartItemInput {
     pub product_id: String,
     pub qty: i64,
+}
+
+async fn validate_cart(
+    tx: &mut Transaction<'_, Sqlite>,
+    items: &[CartItemInput],
+) -> Result<Vec<(Product, i64, i64)>, String> {
+    let mut validated: Vec<(Product, i64, i64)> = Vec::new();
+    for item in items {
+        let product: Product = sqlx::query_as(
+            "SELECT id, category_id, name, price, cost, stock_qty, low_stock_threshold, barcode, active, updated_at, deleted_at
+             FROM products WHERE id = ?",
+        )
+        .bind(&item.product_id)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(|_| format!("Product {} not found", item.product_id))?;
+
+        if !product.active {
+            return Err(format!("{} is not available for sale", product.name));
+        }
+        if product.stock_qty < item.qty {
+            return Err(format!(
+                "Insufficient stock for {} (have {}, need {})",
+                product.name, product.stock_qty, item.qty
+            ));
+        }
+
+        let line_total = product.price * item.qty;
+        validated.push((product, item.qty, line_total));
+    }
+    Ok(validated)
+}
+
+async fn insert_order_row(
+    tx: &mut Transaction<'_, Sqlite>,
+    order_id: &str,
+    method: &str,
+    total: i64,
+    customer_id: &Option<String>,
+    actor: &Option<String>,
+    now: &str,
+) -> Result<Order, String> {
+    sqlx::query("INSERT INTO orders (id, method, total, customer_id, updated_at, deleted_at, created_by) VALUES (?, ?, ?, ?, ?, NULL, ?)")
+        .bind(order_id)
+        .bind(method)
+        .bind(total)
+        .bind(customer_id)
+        .bind(now)
+        .bind(actor)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let order = Order {
+        id: order_id.to_string(),
+        method: method.to_string(),
+        total,
+        customer_id: customer_id.clone(),
+        updated_at: now.to_string(),
+        deleted_at: None,
+    };
+    let order_payload = json!({
+        "id": order.id, "method": order.method, "total": order.total,
+        "customerId": order.customer_id, "updatedAt": order.updated_at, "deletedAt": null,
+        "createdBy": actor,
+    });
+    enqueue_outbox_tx(tx, "orders", "upsert", order_id, &order_payload)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(order)
+}
+
+async fn apply_line_item(
+    tx: &mut Transaction<'_, Sqlite>,
+    order_id: &str,
+    product: &Product,
+    qty: i64,
+    line_total: i64,
+    actor: &Option<String>,
+    now: &str,
+) -> Result<OrderItem, String> {
+    let new_stock_qty = product.stock_qty - qty;
+    sqlx::query("UPDATE products SET stock_qty = ?, updated_at = ?, updated_by = ? WHERE id = ?")
+        .bind(new_stock_qty)
+        .bind(now)
+        .bind(actor)
+        .bind(&product.id)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    let updated_product = Product { stock_qty: new_stock_qty, updated_at: now.to_string(), ..product.clone() };
+    enqueue_outbox_tx(tx, "products", "upsert", &product.id, &product_payload(&updated_product, &None, actor))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let movement_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO stock_movements (id, product_id, delta, reason, note, updated_at, created_by) VALUES (?, ?, ?, 'sale', NULL, ?, ?)",
+    )
+    .bind(&movement_id)
+    .bind(&product.id)
+    .bind(-qty)
+    .bind(now)
+    .bind(actor)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| e.to_string())?;
+    let movement_payload = json!({
+        "id": movement_id, "productId": product.id, "delta": -qty,
+        "reason": "sale", "note": null, "updatedAt": now, "createdBy": actor,
+    });
+    enqueue_outbox_tx(tx, "stockMovements", "upsert", &movement_id, &movement_payload)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let order_item_id = Uuid::new_v4().to_string();
+    let metadata = json!({
+        "productName": product.name,
+        "categoryId": product.category_id,
+        "unitPrice": product.price,
+    })
+    .to_string();
+    sqlx::query(
+        "INSERT INTO order_items (id, order_id, product_id, qty, unit_price, line_total, updated_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&order_item_id)
+    .bind(order_id)
+    .bind(&product.id)
+    .bind(qty)
+    .bind(product.price)
+    .bind(line_total)
+    .bind(now)
+    .bind(&metadata)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| e.to_string())?;
+    let oi = OrderItem {
+        id: order_item_id,
+        order_id: order_id.to_string(),
+        product_id: product.id.clone(),
+        qty,
+        unit_price: product.price,
+        line_total,
+        updated_at: now.to_string(),
+        metadata: Some(metadata),
+    };
+    let oi_payload = json!({
+        "id": oi.id, "orderId": oi.order_id, "productId": oi.product_id,
+        "qty": oi.qty, "unitPrice": oi.unit_price, "lineTotal": oi.line_total, "updatedAt": oi.updated_at,
+        "metadata": oi.metadata.as_deref().and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok()),
+    });
+    enqueue_outbox_tx(tx, "orderItems", "upsert", &oi.id, &oi_payload)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(oi)
 }
 
 // Cafe checkout: validates stock/active status, decrements stock, and writes
@@ -36,139 +193,14 @@ pub(crate) async fn do_create_order(
     let now = crate::time::now_iso();
     let order_id = Uuid::new_v4().to_string();
 
-    // Pass 1: validate every line and compute the total before inserting anything.
-    let mut validated: Vec<(Product, i64, i64)> = Vec::new(); // (product, qty, line_total)
-    let mut total: i64 = 0;
-    for item in &items {
-        let product: Product = sqlx::query_as(
-            "SELECT id, category_id, name, price, cost, stock_qty, low_stock_threshold, barcode, active, updated_at, deleted_at
-             FROM products WHERE id = ?",
-        )
-        .bind(&item.product_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|_| format!("Product {} not found", item.product_id))?;
+    let validated = validate_cart(&mut tx, &items).await?;
+    let total: i64 = validated.iter().map(|(_, _, line_total)| *line_total).sum();
 
-        if !product.active {
-            return Err(format!("{} is not available for sale", product.name));
-        }
-        if product.stock_qty < item.qty {
-            return Err(format!(
-                "Insufficient stock for {} (have {}, need {})",
-                product.name, product.stock_qty, item.qty
-            ));
-        }
+    let order = insert_order_row(&mut tx, &order_id, &method, total, &customer_id, &actor, &now).await?;
 
-        let line_total = product.price * item.qty;
-        total += line_total;
-        validated.push((product, item.qty, line_total));
-    }
-
-    // Pass 2: insert the order first -- order_items has a FK on orders.id.
-    sqlx::query("INSERT INTO orders (id, method, total, customer_id, updated_at, deleted_at, created_by) VALUES (?, ?, ?, ?, ?, NULL, ?)")
-        .bind(&order_id)
-        .bind(&method)
-        .bind(total)
-        .bind(&customer_id)
-        .bind(&now)
-        .bind(&actor)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let order = Order {
-        id: order_id.clone(),
-        method: method.clone(),
-        total,
-        customer_id: customer_id.clone(),
-        updated_at: now.clone(),
-        deleted_at: None,
-    };
-    let order_payload = json!({
-        "id": order.id, "method": order.method, "total": order.total,
-        "customerId": order.customer_id, "updatedAt": order.updated_at, "deletedAt": null,
-        "createdBy": actor,
-    });
-    enqueue_outbox_tx(&mut tx, "orders", "upsert", &order_id, &order_payload)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Pass 3: decrement stock and write each item + its stock movement.
     let mut order_items: Vec<OrderItem> = Vec::new();
     for (product, qty, line_total) in validated {
-        let new_stock_qty = product.stock_qty - qty;
-        sqlx::query("UPDATE products SET stock_qty = ?, updated_at = ?, updated_by = ? WHERE id = ?")
-            .bind(new_stock_qty)
-            .bind(&now)
-            .bind(&actor)
-            .bind(&product.id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        let updated_product = Product { stock_qty: new_stock_qty, updated_at: now.clone(), ..product.clone() };
-        enqueue_outbox_tx(&mut tx, "products", "upsert", &product.id, &product_payload(&updated_product, &None, &actor))
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let movement_id = Uuid::new_v4().to_string();
-        sqlx::query(
-            "INSERT INTO stock_movements (id, product_id, delta, reason, note, updated_at, created_by) VALUES (?, ?, ?, 'sale', NULL, ?, ?)",
-        )
-        .bind(&movement_id)
-        .bind(&product.id)
-        .bind(-qty)
-        .bind(&now)
-        .bind(&actor)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
-        let movement_payload = json!({
-            "id": movement_id, "productId": product.id, "delta": -qty,
-            "reason": "sale", "note": null, "updatedAt": now, "createdBy": actor,
-        });
-        enqueue_outbox_tx(&mut tx, "stockMovements", "upsert", &movement_id, &movement_payload)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let order_item_id = Uuid::new_v4().to_string();
-        let metadata = json!({
-            "productName": product.name,
-            "categoryId": product.category_id,
-            "unitPrice": product.price,
-        })
-        .to_string();
-        sqlx::query(
-            "INSERT INTO order_items (id, order_id, product_id, qty, unit_price, line_total, updated_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&order_item_id)
-        .bind(&order_id)
-        .bind(&product.id)
-        .bind(qty)
-        .bind(product.price)
-        .bind(line_total)
-        .bind(&now)
-        .bind(&metadata)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
-        let oi = OrderItem {
-            id: order_item_id,
-            order_id: order_id.clone(),
-            product_id: product.id.clone(),
-            qty,
-            unit_price: product.price,
-            line_total,
-            updated_at: now.clone(),
-            metadata: Some(metadata),
-        };
-        let oi_payload = json!({
-            "id": oi.id, "orderId": oi.order_id, "productId": oi.product_id,
-            "qty": oi.qty, "unitPrice": oi.unit_price, "lineTotal": oi.line_total, "updatedAt": oi.updated_at,
-            "metadata": oi.metadata.as_deref().and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok()),
-        });
-        enqueue_outbox_tx(&mut tx, "orderItems", "upsert", &oi.id, &oi_payload)
-            .await
-            .map_err(|e| e.to_string())?;
+        let oi = apply_line_item(&mut tx, &order_id, &product, qty, line_total, &actor, &now).await?;
         order_items.push(oi);
     }
 

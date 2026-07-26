@@ -131,6 +131,12 @@ pub(crate) async fn do_create_order(
             .map_err(|e| e.to_string())?;
 
         let order_item_id = Uuid::new_v4().to_string();
+        let metadata = json!({
+            "productName": product.name,
+            "categoryId": product.category_id,
+            "unitPrice": product.price,
+        })
+        .to_string();
         sqlx::query(
             "INSERT INTO order_items (id, order_id, product_id, qty, unit_price, line_total, updated_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
@@ -141,7 +147,7 @@ pub(crate) async fn do_create_order(
         .bind(product.price)
         .bind(line_total)
         .bind(&now)
-        .bind(None::<String>)
+        .bind(&metadata)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
@@ -153,7 +159,7 @@ pub(crate) async fn do_create_order(
             unit_price: product.price,
             line_total,
             updated_at: now.clone(),
-            metadata: None,
+            metadata: Some(metadata),
         };
         let oi_payload = json!({
             "id": oi.id, "orderId": oi.order_id, "productId": oi.product_id,
@@ -328,6 +334,27 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(updated.stock_qty, 7);
+    }
+
+    #[tokio::test]
+    async fn checkout_stores_a_product_snapshot_as_metadata() {
+        let pool = setup_test_db().await;
+        let product = seed_product(&pool, 10).await;
+
+        let result = do_create_order(
+            &pool,
+            vec![CartItemInput { product_id: product.id.clone(), qty: 2 }],
+            "Cash".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let metadata: serde_json::Value =
+            serde_json::from_str(result.items[0].metadata.as_deref().unwrap()).unwrap();
+        assert_eq!(metadata["productName"], "Cola");
+        assert_eq!(metadata["categoryId"], product.category_id);
+        assert_eq!(metadata["unitPrice"], 50);
     }
 
     #[tokio::test]

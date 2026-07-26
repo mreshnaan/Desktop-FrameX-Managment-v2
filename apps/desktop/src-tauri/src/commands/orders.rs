@@ -196,6 +196,7 @@ pub(crate) async fn do_create_order(
     let validated = validate_cart(&mut tx, &items).await?;
     let total: i64 = validated.iter().map(|(_, _, line_total)| *line_total).sum();
 
+    // Must happen before apply_line_item below -- order_items has an FK on orders.id.
     let order = insert_order_row(&mut tx, &order_id, &method, total, &customer_id, &actor, &now).await?;
 
     let mut order_items: Vec<OrderItem> = Vec::new();

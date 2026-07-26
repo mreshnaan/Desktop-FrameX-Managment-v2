@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { commands } from '../tauri/commands';
+import { groupBy } from '../shared/utils/groupBy';
 
 export interface CategoryStation {
   id: string;
@@ -20,17 +21,12 @@ export function useCategories() {
     queryKey: ['categories'],
     queryFn: async (): Promise<CategoryWithStations[]> => {
       const [categories, stations] = await Promise.all([commands.listCategories(), commands.listStations()]);
-      const stationsByCategory = new Map<string, CategoryStation[]>();
-      for (const station of stations) {
-        const list = stationsByCategory.get(station.categoryId) ?? [];
-        list.push({ id: station.id, name: station.name });
-        stationsByCategory.set(station.categoryId, list);
-      }
+      const stationsByCategory = groupBy(stations, s => s.categoryId);
       return categories.map(c => ({
         id: c.id,
         name: c.name,
         billingType: c.billingType,
-        stations: stationsByCategory.get(c.id) ?? [],
+        stations: (stationsByCategory.get(c.id) ?? []).map(s => ({ id: s.id, name: s.name })),
       }));
     },
   });

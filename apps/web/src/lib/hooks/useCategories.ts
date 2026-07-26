@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { usePullData } from './usePullData';
-import type { Billing } from '@/lib/shared';
+import { groupBy, type Billing } from '@/lib/shared';
 
 export interface CategoryStation {
   id: string;
@@ -20,17 +20,12 @@ export function useCategories() {
 
   const categories = useMemo<CategoryWithStations[]>(() => {
     if (!query.data) return [];
-    const stationsByCategory = new Map<string, CategoryStation[]>();
-    for (const station of query.data.stations) {
-      const list = stationsByCategory.get(station.categoryId) ?? [];
-      list.push({ id: station.id, name: station.name });
-      stationsByCategory.set(station.categoryId, list);
-    }
+    const stationsByCategory = groupBy(query.data.stations, s => s.categoryId);
     return query.data.categories.map(c => ({
       id: c.id,
       name: c.name,
       billingType: c.billingType,
-      stations: stationsByCategory.get(c.id) ?? [],
+      stations: (stationsByCategory.get(c.id) ?? []).map(s => ({ id: s.id, name: s.name })),
     }));
   }, [query.data]);
 

@@ -2,6 +2,7 @@ export * from './constants/categories.js';
 export * from './constants/roles.js';
 export * from './utils/dates.js';
 export * from './utils/money.js';
+export * from './utils/groupBy.js';
 export * from './schemas/session.schema.js';
 export * from './schemas/expense.schema.js';
 export * from './schemas/customer.schema.js';

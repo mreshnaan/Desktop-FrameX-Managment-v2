@@ -7,6 +7,7 @@ import {
   nowTimeStr,
   addMinutesToTime,
   durationMinutes,
+  groupBy,
   type Session,
   type Customer,
   type Billing,
@@ -84,6 +85,10 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
     return totals;
   }, [sessions, cafe]);
 
+  // Single grouping pass instead of re-filtering the day's sessions once per
+  // category (here) and again once per station (in CategoryGroup).
+  const sessionsByStationId = useMemo(() => groupBy(sessions, s => s.stationId), [sessions]);
+
   return (
     <div className="flex flex-col gap-6 p-4">
       <h1 className="text-xl font-semibold">Daily Sales</h1>
@@ -99,7 +104,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
               key={category.id}
               date={date}
               category={category}
-              sessions={sessions.filter(s => category.stations.some(st => st.id === s.stationId))}
+              sessionsByStationId={sessionsByStationId}
               customers={customers}
               addSession={addSession}
               updateSession={updateSession}
@@ -143,7 +148,7 @@ function SummaryStrip({ summary }: { summary: Summary }) {
 function CategoryGroup({
   date,
   category,
-  sessions,
+  sessionsByStationId,
   customers,
   addSession,
   updateSession,
@@ -151,7 +156,7 @@ function CategoryGroup({
 }: {
   date: string;
   category: CategoryWithStations;
-  sessions: Session[];
+  sessionsByStationId: Map<string, Session[]>;
   customers: Customer[];
   addSession: AddSessionFn;
   updateSession: UpdateSessionFn;
@@ -167,7 +172,7 @@ function CategoryGroup({
             date={date}
             category={category}
             station={station}
-            sessions={sessions.filter(s => s.stationId === station.id)}
+            sessions={sessionsByStationId.get(station.id) ?? []}
             customers={customers}
             addSession={addSession}
             updateSession={updateSession}

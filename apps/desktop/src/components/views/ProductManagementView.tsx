@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { formatCurrency } from '@/lib/shared';
-import { useProducts, productsByCategory } from '@/lib/hooks/useProducts';
+import { useMemo, useState } from 'react';
+import { formatCurrency, groupBy } from '@/lib/shared';
+import { useProducts } from '@/lib/hooks/useProducts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +12,10 @@ import type { ProductRow } from '@/lib/tauri/commands';
 export default function ProductManagementView() {
   const { categories, products, isLoading, addCategory, addProduct, updateProduct, adjustStock } = useProducts();
 
+  // Single grouping pass instead of re-scanning all `products` twice per
+  // category on every render (once for active, once for inactive).
+  const productsByCategoryId = useMemo(() => groupBy(products, p => p.categoryId), [products]);
+
   return (
     <div className="flex flex-col gap-6 p-4">
       <NewCategoryCard onCreated={addCategory} />
@@ -20,9 +24,7 @@ export default function ProductManagementView() {
         <ListSkeleton />
       ) : (
         categories.map(category => {
-          const items = productsByCategory(products, category.id).concat(
-            products.filter(p => p.categoryId === category.id && !p.active),
-          );
+          const items = productsByCategoryId.get(category.id) ?? [];
           if (items.length === 0) return null;
           return (
             <Card key={category.id}>

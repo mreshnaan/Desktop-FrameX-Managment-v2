@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { formatCurrency } from '@/lib/shared';
+import { formatCurrency, groupBy } from '@/lib/shared';
 import { useProducts, productsByCategory } from '@/lib/hooks/useProducts';
 import { useCart } from '@/lib/hooks/useCart';
 import { useOrders } from '@/lib/hooks/useOrders';
@@ -27,6 +27,13 @@ export default function CafeView() {
     const q = search.trim().toLowerCase();
     return products.filter(p => p.active && p.name.toLowerCase().includes(q));
   }, [products, search]);
+
+  // Single grouping pass instead of re-filtering `products` once per category
+  // on every render (categories.map(c => productsByCategory(products, c.id))).
+  const productsByCategoryId = useMemo(
+    () => groupBy(products.filter(p => p.active), p => p.categoryId),
+    [products],
+  );
 
   async function completeSale() {
     if (lines.length === 0) return;
@@ -67,7 +74,7 @@ export default function CafeView() {
           <ProductGrid products={filteredProducts} onAdd={addToCart} />
         ) : (
           categories.map(category => {
-            const items = productsByCategory(products, category.id);
+            const items = productsByCategoryId.get(category.id) ?? [];
             if (items.length === 0) return null;
             return (
               <section key={category.id} className="flex flex-col gap-2">

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
+import type { UseMutationResult } from '@tanstack/react-query';
 import {
   SessionSchema,
   formatCurrency,
@@ -46,7 +47,6 @@ interface Summary {
 }
 
 type UpdateSessionFn = (id: string, patch: Partial<Session>) => Promise<void>;
-type AddSessionFn = (stationId: string, categoryId: string, billingType: Billing) => Promise<void>;
 type DeleteSessionFn = (id: string) => Promise<void>;
 
 export default function DailySalesView({ date, onDateChange }: DailySalesViewProps) {
@@ -159,9 +159,9 @@ function CategoryGroup({
   category: CategoryWithStations;
   sessionsByStationId: Map<string, Session[]>;
   customers: Customer[];
-  addSession: AddSessionFn;
-  updateSession: UpdateSessionFn;
-  deleteSession: DeleteSessionFn;
+  addSession: UseMutationResult<Session, Error, { stationId: string; categoryId: string; billingType: 'time' | 'frame' }>;
+  updateSession: UseMutationResult<Session, Error, { id: string; patch: Partial<Session> }>;
+  deleteSession: UseMutationResult<void, Error, string>;
 }) {
   return (
     <section className="flex flex-col gap-3">
@@ -200,9 +200,9 @@ function StationCard({
   station: CategoryStation;
   sessions: Session[];
   customers: Customer[];
-  addSession: AddSessionFn;
-  updateSession: UpdateSessionFn;
-  deleteSession: DeleteSessionFn;
+  addSession: UseMutationResult<Session, Error, { stationId: string; categoryId: string; billingType: 'time' | 'frame' }>;
+  updateSession: UseMutationResult<Session, Error, { id: string; patch: Partial<Session> }>;
+  deleteSession: UseMutationResult<void, Error, string>;
 }) {
   const subtotal = useMemo(() => sessions.reduce((sum, s) => sum + s.amount, 0), [sessions]);
 
@@ -224,14 +224,14 @@ function StationCard({
             frameNumber={index + 1}
             billing={category.billingType}
             customers={customers}
-            updateSession={updateSession}
-            deleteSession={deleteSession}
+            updateSession={(id, patch) => updateSession.mutateAsync({ id, patch }).then(() => undefined)}
+            deleteSession={(id) => deleteSession.mutateAsync(id).then(() => undefined)}
           />
         ))}
         <Button
           variant="outline"
           size="sm"
-          onClick={() => addSession(station.id, category.id, category.billingType)}
+          onClick={() => addSession.mutate({ stationId: station.id, categoryId: category.id, billingType: category.billingType })}
         >
           + Add session
         </Button>

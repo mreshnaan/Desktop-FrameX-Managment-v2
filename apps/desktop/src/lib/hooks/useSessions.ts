@@ -1,34 +1,38 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../tauri/commands';
 import type { Session } from '../shared/schemas/session.schema';
-import { useInvalidateAfter } from './useInvalidateAfter';
 
 export function useSessions(date: string) {
+  const qc = useQueryClient();
   const key = ['sessions', date];
-  const invalidate = useInvalidateAfter([key]);
 
   const query = useQuery({
     queryKey: key,
     queryFn: () => commands.listSessionsForDate(date),
   });
 
-  async function addSession(stationId: string, categoryId: string, billingType: 'time' | 'frame') {
-    await invalidate(() => commands.createSession(stationId, categoryId, billingType, date));
-  }
+  const addSession = useMutation({
+    mutationFn: (input: { stationId: string; categoryId: string; billingType: 'time' | 'frame' }) =>
+      commands.createSession(input.stationId, input.categoryId, input.billingType, date),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
 
-  async function updateSession(id: string, patch: Partial<Session>) {
-    await invalidate(() => commands.updateSession(id, {
-      start: patch.start,
-      end: patch.end,
-      amount: patch.amount,
-      method: patch.method,
-      customerId: patch.customerId,
-    }));
-  }
+  const updateSession = useMutation({
+    mutationFn: (input: { id: string; patch: Partial<Session> }) =>
+      commands.updateSession(input.id, {
+        start: input.patch.start,
+        end: input.patch.end,
+        amount: input.patch.amount,
+        method: input.patch.method,
+        customerId: input.patch.customerId,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
 
-  async function deleteSession(id: string) {
-    await invalidate(() => commands.deleteSession(id));
-  }
+  const deleteSession = useMutation({
+    mutationFn: (id: string) => commands.deleteSession(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
 
   return { sessions: query.data ?? [], isLoading: query.isLoading, addSession, updateSession, deleteSession };
 }

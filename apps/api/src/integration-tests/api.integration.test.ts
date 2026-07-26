@@ -334,4 +334,65 @@ describe('authenticated routes', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  // -------------------------------------------------------------------------
+  // GET /orders
+  // -------------------------------------------------------------------------
+  it('GET /orders returns only orders within the UTC bounds, with their items', async () => {
+    const product = await prisma.product.findFirst();
+    const inRangeId = crypto.randomUUID();
+    const outOfRangeId = crypto.randomUUID();
+
+    await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [
+          { table: 'orders', op: 'upsert', id: inRangeId, payload: { id: inRangeId, method: 'Cash', total: 100, customerId: null }, clientUpdatedAt: new Date().toISOString() },
+          { table: 'orders', op: 'upsert', id: outOfRangeId, payload: { id: outOfRangeId, method: 'Cash', total: 200, customerId: null }, clientUpdatedAt: new Date().toISOString() },
+        ],
+      }),
+    });
+
+    // applyPush always server-stamps updatedAt to "now" -- backdate directly
+    // to simulate historical orders, matching the pattern in
+    // apps/desktop/src-tauri/src/commands/orders.rs's own tests.
+    await prisma.order.update({ where: { id: inRangeId }, data: { updatedAt: new Date('2026-07-01T10:00:00.000Z') } });
+    await prisma.order.update({ where: { id: outOfRangeId }, data: { updatedAt: new Date('2026-07-02T10:00:00.000Z') } });
+
+    if (product) {
+      const itemId = crypto.randomUUID();
+      await fetch(`${baseUrl}/sync/push`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          entries: [{
+            table: 'orderItems', op: 'upsert', id: itemId,
+            payload: { id: itemId, orderId: inRangeId, productId: product.id, qty: 2, unitPrice: 50, lineTotal: 100 },
+            clientUpdatedAt: new Date().toISOString(),
+          }],
+        }),
+      });
+    }
+
+    const res = await fetch(
+      `${baseUrl}/orders?startUtc=2026-07-01T00:00:00.000Z&endUtc=2026-07-02T00:00:00.000Z`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    expect(res.status).toBe(200);
+    const body = await json<{ orders: { id: string }[]; orderItems: { orderId: string }[] }>(res);
+    expect(body.orders.some(o => o.id === inRangeId)).toBe(true);
+    expect(body.orders.some(o => o.id === outOfRangeId)).toBe(false);
+    expect(body.orderItems.every(i => i.orderId === inRangeId)).toBe(true);
+
+    await prisma.orderItem.deleteMany({ where: { orderId: { in: [inRangeId, outOfRangeId] } } });
+    await prisma.order.deleteMany({ where: { id: { in: [inRangeId, outOfRangeId] } } });
+  });
+
+  it('GET /orders returns 400 when startUtc/endUtc are missing', async () => {
+    const res = await fetch(`${baseUrl}/orders`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.status).toBe(400);
+  });
 });

@@ -276,7 +276,13 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
         // base rate, ignoring any prior manual amount edit or previously
         // applied offer's discount -- see the plan's Global Constraints for why
         // (predictability: "price this session correctly, with the discount,"
-        // never "discount whatever number happens to be in the box").
+        // never "discount whatever number happens to be in the box"). But that
+        // recompute is only trustworthy when a fresh base amount can actually
+        // be derived from the rate right now; otherwise (a still-running
+        // time-billed session with no end time yet) any fallback -- including
+        // `existing.amount`, which may already be a previously discounted
+        // number -- risks compounding a discount on top of itself. So when no
+        // trustworthy fresh base is available, this whole block is a no-op.
         let category_row: Option<(String, Option<i64>, Option<i64>, Option<i64>)> = sqlx::query_as(
             "SELECT c.billing_type, r.hour_rate, r.half_rate, r.frame_rate
              FROM stations st JOIN categories c ON c.id = st.category_id
@@ -289,64 +295,65 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
         .map_err(|e| e.to_string())?;
 
         let has_full_time_range = !existing.start.is_empty() && !existing.end.is_empty();
-        let base_amount = match &category_row {
-            Some((billing_type, hour_rate, half_rate, _)) if billing_type == "time" => {
-                if has_full_time_range {
-                    calc_time_amount(&existing.start, &existing.end, hour_rate.unwrap_or(0), half_rate.unwrap_or(0))
-                } else {
-                    // Still running (no end time yet) -- nothing to recompute
-                    // from yet, leave the amount as it already is rather than
-                    // computing a spurious 0 from an empty duration.
-                    existing.amount
-                }
-            }
-            Some((billing_type, _, _, frame_rate)) if billing_type == "frame" => {
-                calc_frame_amount(frame_rate.unwrap_or(0))
-            }
-            _ => existing.amount,
-        };
+        let is_time_billed = category_row.as_ref().map(|r| r.0.as_str()) == Some("time");
+        let is_frame_billed = category_row.as_ref().map(|r| r.0.as_str()) == Some("frame");
+        let can_compute_fresh_base = is_frame_billed || (is_time_billed && has_full_time_range);
 
-        match &existing.offer_id {
-            None => {
-                existing.amount = base_amount;
-                existing.discount_amount = None;
-            }
-            Some(offer_id) => {
-                let offer: Option<Offer> = sqlx::query_as(&format!(
-                    "SELECT {OFFER_COLUMNS} FROM offers WHERE id = ?"
-                ))
-                .bind(offer_id)
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(|e| e.to_string())?;
+        if can_compute_fresh_base {
+            let base_amount = if is_time_billed {
+                let hour_rate = category_row.as_ref().and_then(|r| r.1).unwrap_or(0);
+                let half_rate = category_row.as_ref().and_then(|r| r.2).unwrap_or(0);
+                calc_time_amount(&existing.start, &existing.end, hour_rate, half_rate)
+            } else {
+                let frame_rate = category_row.as_ref().and_then(|r| r.3).unwrap_or(0);
+                calc_frame_amount(frame_rate)
+            };
 
-                if let Some(offer) = offer {
-                    let is_time_billed = category_row.as_ref().map(|r| r.0.as_str()) == Some("time");
-                    let (final_amount, discount) = if offer.effect_type == "extraTime" && is_time_billed && has_full_time_range {
-                        let actual_minutes = duration_minutes(&existing.start, &existing.end);
-                        let billable = billable_minutes_after_extra_time(actual_minutes, offer.effect_value);
-                        let hour_rate = category_row.as_ref().and_then(|r| r.1).unwrap_or(0);
-                        let half_rate = category_row.as_ref().and_then(|r| r.2).unwrap_or(0);
-                        let discounted_base = calc_time_amount_for_duration(billable, hour_rate, half_rate);
-                        (discounted_base, (base_amount - discounted_base).max(0))
-                    } else if offer.effect_type == "extraTime" {
-                        // extraTime doesn't apply to a non-time-billed category
-                        // (frame-billed has no "duration" to reduce), and doesn't
-                        // apply to a still-running time-billed session with no
-                        // end time yet -- both are a no-op rather than a
-                        // spurious full discount.
-                        (base_amount, 0)
-                    } else {
-                        apply_discount_effect(base_amount, &offer.effect_type, offer.effect_value)
-                    };
-                    existing.amount = final_amount;
-                    existing.discount_amount = Some(discount);
-                } else {
+            match &existing.offer_id {
+                None => {
                     existing.amount = base_amount;
                     existing.discount_amount = None;
                 }
+                Some(offer_id) => {
+                    let offer: Option<Offer> = sqlx::query_as(&format!(
+                        "SELECT {OFFER_COLUMNS} FROM offers WHERE id = ?"
+                    ))
+                    .bind(offer_id)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(|e| e.to_string())?;
+
+                    if let Some(offer) = offer {
+                        let (final_amount, discount) = if offer.effect_type == "extraTime" && is_time_billed {
+                            let actual_minutes = duration_minutes(&existing.start, &existing.end);
+                            let billable = billable_minutes_after_extra_time(actual_minutes, offer.effect_value);
+                            let hour_rate = category_row.as_ref().and_then(|r| r.1).unwrap_or(0);
+                            let half_rate = category_row.as_ref().and_then(|r| r.2).unwrap_or(0);
+                            let discounted_base = calc_time_amount_for_duration(billable, hour_rate, half_rate);
+                            (discounted_base, (base_amount - discounted_base).max(0))
+                        } else if offer.effect_type == "extraTime" {
+                            // extraTime doesn't apply to a non-time-billed category -- a no-op.
+                            (base_amount, 0)
+                        } else {
+                            apply_discount_effect(base_amount, &offer.effect_type, offer.effect_value)
+                        };
+                        existing.amount = final_amount;
+                        existing.discount_amount = Some(discount);
+                    } else {
+                        // Referenced offer no longer resolves -- fall back to
+                        // the undiscounted base and clear the dangling reference.
+                        existing.amount = base_amount;
+                        existing.discount_amount = None;
+                        existing.offer_id = None;
+                    }
+                }
             }
         }
+        // else: no trustworthy fresh base available right now (e.g. a
+        // still-running time-billed session with no end time yet) -- leave
+        // amount/discount_amount exactly as they already are. offer_id was
+        // already updated by the merge step above if patched; the money
+        // catches up next time this block runs with a full time range.
     }
 
     existing.updated_at = crate::time::now_iso();
@@ -727,7 +734,8 @@ mod tests {
         // 2h actual - 30 free = 90 billable min = 1h at 400 + 30min at 200 = 600.
         assert_eq!(extended.amount, 600);
         assert_eq!(extended.offer_id, Some(offer.id));
-        assert!(extended.discount_amount.is_some());
+        // Fresh base for the full 2h range is 800; discounted is 600 -> discount 200.
+        assert_eq!(extended.discount_amount, Some(200));
     }
 
     #[tokio::test]
@@ -759,19 +767,90 @@ mod tests {
         let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-27".to_string())
             .await
             .unwrap();
-        // No start/end patched -- session is still "running" with amount 0.
+        // Manually set a nonzero amount without a full start/end range, so
+        // "unchanged" and "spuriously recomputed" are distinguishable.
+        let with_amount = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { amount: Some(600), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        // No start/end patched -- session is still "running".
         let offer = do_create_offer(&pool, crate::commands::offers::tests_helpers_offer_input_extra_time(30, None)).await.unwrap();
 
         let with_offer = do_update_session(
             &pool,
-            session.id,
+            with_amount.id,
             SessionPatch { offer_id: Some(Some(offer.id)), ..Default::default() },
         )
         .await
         .unwrap();
 
-        assert_eq!(with_offer.amount, 0, "amount was already 0 before any time was set -- must stay unchanged, not error");
-        assert_eq!(with_offer.discount_amount, Some(0));
+        assert_eq!(with_offer.amount, 600, "no trustworthy fresh base could be computed -- amount must stay exactly as it was");
+        assert_eq!(with_offer.discount_amount, None, "nothing was applied yet since no fresh base could be computed");
+    }
+
+    #[tokio::test]
+    async fn percent_off_does_not_compound_when_reapplied_without_a_full_time_range() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 400, 200).await;
+        let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-27".to_string())
+            .await
+            .unwrap();
+        // Manually set a starting amount without a full start/end range, so
+        // no fresh base can ever be computed for this session.
+        let with_amount = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { amount: Some(600), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+        // The existing test helper only builds extraTime offers -- build a
+        // percentOff offer directly.
+        let percent_offer_input = crate::commands::offers::OfferInput {
+            name: "10 Percent Off".to_string(),
+            active: true,
+            applies_to_all_categories: true,
+            category_ids: None,
+            days: None,
+            start_time: None,
+            end_time: None,
+            start_date: None,
+            end_date: None,
+            min_duration_minutes: None,
+            min_game_count: None,
+            effect_type: "percentOff".to_string(),
+            effect_value: 10,
+        };
+        let percent_offer = do_create_offer(&pool, percent_offer_input).await.unwrap();
+
+        let first_apply = do_update_session(
+            &pool,
+            with_amount.id,
+            SessionPatch { offer_id: Some(Some(percent_offer.id.clone())), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        // No full time range exists (start/end are still empty) -- the
+        // offer-recompute block must be a no-op, leaving amount/discount
+        // exactly as they were before this patch, not compounding a 10%
+        // cut onto 600.
+        assert_eq!(first_apply.amount, 600);
+        assert_eq!(first_apply.discount_amount, None);
+
+        // Re-applying (same offer id patched again) must still not compound.
+        let second_apply = do_update_session(
+            &pool,
+            first_apply.id,
+            SessionPatch { offer_id: Some(Some(percent_offer.id)), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(second_apply.amount, 600);
+        assert_eq!(second_apply.discount_amount, None);
     }
 
     #[tokio::test]

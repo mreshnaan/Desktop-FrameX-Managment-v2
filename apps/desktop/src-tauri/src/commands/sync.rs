@@ -117,6 +117,7 @@ async fn apply_one(
         "categories" => apply_categories(tx, id, row).await,
         "stations" => apply_stations(tx, id, row).await,
         "rates" => apply_rates(tx, id, row).await,
+        "offers" => apply_offers(tx, id, row).await,
         "customers" => apply_customers(tx, id, row).await,
         "sessions" => apply_sessions(tx, id, row).await,
         "expenses" => apply_expenses(tx, id, row).await,
@@ -176,6 +177,44 @@ async fn apply_rates(tx: &mut Transaction<'_, Sqlite>, id: &str, row: &Value) ->
     Ok(())
 }
 
+async fn apply_offers(tx: &mut Transaction<'_, Sqlite>, id: &str, row: &Value) -> Result<(), sqlx::Error> {
+    if !is_newer(tx, "offers", id, row).await? {
+        return Ok(());
+    }
+    sqlx::query(
+        "INSERT INTO offers (id, name, active, applies_to_all_categories, category_ids, \
+         days, start_time, end_time, start_date, end_date, min_duration_minutes, \
+         min_game_count, effect_type, effect_value, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, active = excluded.active,
+           applies_to_all_categories = excluded.applies_to_all_categories,
+           category_ids = excluded.category_ids, days = excluded.days,
+           start_time = excluded.start_time, end_time = excluded.end_time,
+           start_date = excluded.start_date, end_date = excluded.end_date,
+           min_duration_minutes = excluded.min_duration_minutes,
+           min_game_count = excluded.min_game_count, effect_type = excluded.effect_type,
+           effect_value = excluded.effect_value, updated_at = excluded.updated_at",
+    )
+    .bind(id)
+    .bind(row["name"].as_str().unwrap_or_default())
+    .bind(row["active"].as_bool().unwrap_or(true))
+    .bind(row["appliesToAllCategories"].as_bool().unwrap_or(false))
+    .bind(row["categoryIds"].as_str())
+    .bind(row["days"].as_str())
+    .bind(row["startTime"].as_str())
+    .bind(row["endTime"].as_str())
+    .bind(row["startDate"].as_str())
+    .bind(row["endDate"].as_str())
+    .bind(row["minDurationMinutes"].as_i64())
+    .bind(row["minGameCount"].as_i64())
+    .bind(row["effectType"].as_str().unwrap_or_default())
+    .bind(row["effectValue"].as_i64().unwrap_or(0))
+    .bind(row["updatedAt"].as_str().unwrap_or_default())
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
 async fn apply_customers(tx: &mut Transaction<'_, Sqlite>, id: &str, row: &Value) -> Result<(), sqlx::Error> {
     if !is_newer(tx, "customers", id, row).await? {
         return Ok(());
@@ -201,13 +240,13 @@ async fn apply_sessions(tx: &mut Transaction<'_, Sqlite>, id: &str, row: &Value)
     }
     let metadata = json_metadata(row);
     sqlx::query(
-        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at, offer_id, discount_amount)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET station_id = excluded.station_id, date = excluded.date,
            start = excluded.start, \"end\" = excluded.\"end\", amount = excluded.amount,
            method = excluded.method, customer_id = excluded.customer_id,
            updated_at = excluded.updated_at, deleted_at = excluded.deleted_at, metadata = excluded.metadata,
-           paid_at = excluded.paid_at",
+           paid_at = excluded.paid_at, offer_id = excluded.offer_id, discount_amount = excluded.discount_amount",
     )
     .bind(id)
     .bind(row["stationId"].as_str().unwrap_or_default())
@@ -221,6 +260,8 @@ async fn apply_sessions(tx: &mut Transaction<'_, Sqlite>, id: &str, row: &Value)
     .bind(row["deletedAt"].as_str())
     .bind(metadata)
     .bind(row["paidAt"].as_str())
+    .bind(row["offerId"].as_str())
+    .bind(row["discountAmount"].as_i64())
     .execute(&mut **tx)
     .await?;
     Ok(())

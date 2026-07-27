@@ -180,7 +180,7 @@ model Session {
   start      String
   end        String
   amount     Int
-  method     Method
+  method     Method?
   customerId String?
   updatedAt  DateTime  @default(now())
   deletedAt  DateTime?

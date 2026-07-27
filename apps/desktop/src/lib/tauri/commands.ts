@@ -65,7 +65,7 @@ export interface SessionPatch {
   start?: string;
   end?: string;
   amount?: number;
-  method?: string;
+  method?: string | null;
   customerId?: string | null;
   paidAt?: string | null;
 }

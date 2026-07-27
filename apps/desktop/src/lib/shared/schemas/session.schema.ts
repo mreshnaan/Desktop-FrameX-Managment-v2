@@ -7,7 +7,7 @@ const sessionBaseSchema = z.object({
   start: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal('')),
   end: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal('')),
   amount: z.coerce.number().int().min(0),
-  method: z.enum(['Cash', 'Card', 'Credit']),
+  method: z.enum(['Cash', 'Card', 'Credit']).nullable(),
   customerId: z.string().uuid().nullable(),
   updatedAt: z.string().datetime().optional(),
   deletedAt: z.string().datetime().nullable().optional(),
@@ -16,7 +16,7 @@ const sessionBaseSchema = z.object({
 });
 
 const checkCreditCustomer = (data: {
-  method: string;
+  method: string | null;
   customerId: string | null;
 }) => data.method !== 'Credit' || !!data.customerId;
 

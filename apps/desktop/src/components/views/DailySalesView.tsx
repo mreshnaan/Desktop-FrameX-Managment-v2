@@ -44,6 +44,7 @@ interface Summary {
   Cash: number;
   Card: number;
   Credit: number;
+  Pending: number;
 }
 
 type UpdateSessionFn = (id: string, patch: Partial<Session>) => Promise<void>;
@@ -59,7 +60,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
   const cafe = useMemo(() => {
     const costByProductId = new Map(products.map(p => [p.id, p.cost ?? 0]));
     const dayOrderIds = new Set(dayOrders.map(o => o.id));
-    const byMethod: Summary = { total: 0, Cash: 0, Card: 0, Credit: 0 };
+    const byMethod: Summary = { total: 0, Cash: 0, Card: 0, Credit: 0, Pending: 0 };
     for (const o of dayOrders) {
       byMethod.total += o.total;
       byMethod[o.method] += o.total;
@@ -73,10 +74,14 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
   }, [dayOrders, orderItems, products]);
 
   const summary = useMemo<Summary>(() => {
-    const totals: Summary = { total: 0, Cash: 0, Card: 0, Credit: 0 };
+    const totals: Summary = { total: 0, Cash: 0, Card: 0, Credit: 0, Pending: 0 };
     for (const s of sessions) {
       totals.total += s.amount;
-      totals[s.method] += s.amount;
+      if (s.method) {
+        totals[s.method] += s.amount;
+      } else {
+        totals.Pending += s.amount;
+      }
     }
     // Cafe sales fold into the same Total/Cash/Card/Credit figure as sessions.
     totals.total += cafe.byMethod.total;
@@ -125,6 +130,7 @@ function SummaryStrip({ summary }: { summary: Summary }) {
     { label: 'Card', value: summary.Card },
     { label: 'Cash', value: summary.Cash },
     { label: 'Credit', value: summary.Credit },
+    { label: 'Pending', value: summary.Pending },
   ];
 
   return (
@@ -421,7 +427,7 @@ function SessionRow({
           onValueChange={value => commit({ method: value as Session['method'] })}
         >
           <SelectTrigger className="w-28" aria-label="Payment method">
-            <SelectValue />
+            <SelectValue placeholder="Select payment" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="Cash">Cash</SelectItem>

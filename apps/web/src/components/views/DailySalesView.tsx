@@ -16,6 +16,7 @@ interface Summary {
   Cash: number;
   Card: number;
   Credit: number;
+  Pending: number;
 }
 
 export default function DailySalesView({ date, onDateChange }: DailySalesViewProps) {
@@ -24,10 +25,14 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
   const { categories } = useCategories();
 
   const summary = useMemo<Summary>(() => {
-    const totals: Summary = { total: 0, Cash: 0, Card: 0, Credit: 0 };
+    const totals: Summary = { total: 0, Cash: 0, Card: 0, Credit: 0, Pending: 0 };
     for (const s of sessions) {
       totals.total += s.amount;
-      totals[s.method] += s.amount;
+      if (s.method) {
+        totals[s.method] += s.amount;
+      } else {
+        totals.Pending += s.amount;
+      }
     }
     return totals;
   }, [sessions]);
@@ -68,6 +73,7 @@ function SummaryStrip({ summary }: { summary: Summary }) {
     { label: 'Card', value: summary.Card },
     { label: 'Cash', value: summary.Cash },
     { label: 'Credit', value: summary.Credit },
+    { label: 'Pending', value: summary.Pending },
   ];
 
   return (
@@ -178,7 +184,7 @@ function SessionRow({
         <span className="text-muted-foreground">Frame {frameNumber}</span>
       )}
       <span className="font-medium">{formatCurrency(session.amount)}</span>
-      <span className="text-muted-foreground">{session.method}</span>
+      <span className="text-muted-foreground">{session.method ?? 'Pending'}</span>
       {customerName && <span className="text-muted-foreground">{customerName}</span>}
     </div>
   );

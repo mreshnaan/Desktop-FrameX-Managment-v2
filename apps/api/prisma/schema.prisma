@@ -92,6 +92,8 @@ model User {
   createdCreditEntries  CreditEntry[]     @relation("CreditEntryCreatedBy")
   createdRates          Rate[]            @relation("RateCreatedBy")
   updatedRates          Rate[]            @relation("RateUpdatedBy")
+  createdOffers         Offer[]           @relation("OfferCreatedBy")
+  updatedOffers         Offer[]           @relation("OfferUpdatedBy")
   createdProductCategories ProductCategory[] @relation("ProductCategoryCreatedBy")
   updatedProductCategories ProductCategory[] @relation("ProductCategoryUpdatedBy")
   createdProducts       Product[]         @relation("ProductCreatedBy")
@@ -186,6 +188,8 @@ model Session {
   deletedAt  DateTime?
   metadata   Json?
   paidAt     DateTime?
+  offerId    String?
+  discountAmount Int?
 
   createdBy     String?
   createdByUser User?   @relation("SessionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -255,6 +259,29 @@ model Rate {
   createdByUser User?   @relation("RateCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedBy     String?
   updatedByUser User?   @relation("RateUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+}
+
+model Offer {
+  id                       String   @id @default(uuid())
+  name                     String
+  active                   Boolean  @default(true)
+  appliesToAllCategories   Boolean  @default(false)
+  categoryIds              String?
+  days                     String?
+  startTime                String?
+  endTime                  String?
+  startDate                String?
+  endDate                  String?
+  minDurationMinutes       Int?
+  minGameCount             Int?
+  effectType               String
+  effectValue              Int
+  updatedAt                DateTime @default(now())
+
+  createdBy     String?
+  createdByUser User?   @relation("OfferCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedBy     String?
+  updatedByUser User?   @relation("OfferUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 }
 
 // Cafe: a standalone point-of-sale revenue stream (snacks/drinks sold at the

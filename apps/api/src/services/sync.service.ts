@@ -39,6 +39,8 @@ function summarize(table: OutboxEntry['table'], payload: Record<string, unknown>
       return `${str(payload.type) === 'CREDIT_GIVEN' ? 'credit given' : 'payment received'} — ${CURRENCY_SYMBOL}${num(payload.amount)}`;
     case 'rates':
       return `rate (${CURRENCY_SYMBOL}${num(payload.hour ?? payload.value)})`;
+    case 'offers':
+      return `offer "${str(payload.name)}"`;
     case 'productCategories':
       return `product category "${str(payload.name)}"`;
     case 'products':
@@ -117,6 +119,15 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
         where: { id: entry.id },
         create: { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.RateUncheckedCreateInput,
         update: base as unknown as Prisma.RateUncheckedUpdateInput,
+      });
+      break;
+    }
+    case 'offers': {
+      const base = { ...payload, updatedAt: now, ...stampUpdate };
+      await tx.offer.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.OfferUncheckedCreateInput,
+        update: base as unknown as Prisma.OfferUncheckedUpdateInput,
       });
       break;
     }
@@ -213,6 +224,8 @@ async function entryExists(tx: TxClient, table: OutboxEntry['table'], id: string
       return (await tx.creditEntry.findUnique({ where: { id }, select: { id: true } })) !== null;
     case 'rates':
       return (await tx.rate.findUnique({ where: { id }, select: { id: true } })) !== null;
+    case 'offers':
+      return (await tx.offer.findUnique({ where: { id }, select: { id: true } })) !== null;
     case 'categories':
       return (await tx.category.findUnique({ where: { id }, select: { id: true } })) !== null;
     case 'stations':
@@ -277,7 +290,7 @@ export async function pullSince(since?: string, actorUserId?: string) {
   const where = since ? { updatedAt: { gt: new Date(since) } } : {};
   // categories/stations have no updatedAt column, so every pull returns the full set.
   const [
-    sessions, expenses, customers, creditEntries, rates, categories, stations,
+    sessions, expenses, customers, creditEntries, rates, offers, categories, stations,
     productCategories, products, orders, orderItems, stockMovements,
   ] = await Promise.all([
     prisma.session.findMany({ where }),
@@ -285,6 +298,7 @@ export async function pullSince(since?: string, actorUserId?: string) {
     prisma.customer.findMany({ where }),
     prisma.creditEntry.findMany({ where }),
     prisma.rate.findMany({ where }),
+    prisma.offer.findMany({ where }),
     prisma.category.findMany(),
     prisma.station.findMany(),
     prisma.productCategory.findMany(),
@@ -296,7 +310,7 @@ export async function pullSince(since?: string, actorUserId?: string) {
 
   const actor = await resolveActor(actorUserId);
   const entryCount =
-    sessions.length + expenses.length + customers.length + creditEntries.length + rates.length +
+    sessions.length + expenses.length + customers.length + creditEntries.length + rates.length + offers.length +
     categories.length + stations.length + productCategories.length + products.length +
     orders.length + orderItems.length + stockMovements.length;
   await prisma.syncLog.create({
@@ -309,6 +323,7 @@ export async function pullSince(since?: string, actorUserId?: string) {
     customers,
     creditEntries,
     rates,
+    offers,
     categories,
     stations,
     productCategories,

@@ -12,6 +12,7 @@ vi.mock('../db', () => {
     customer: table(),
     creditEntry: table(),
     rate: table(),
+    offer: table(),
     category: table(),
     station: table(),
     productCategory: table(),

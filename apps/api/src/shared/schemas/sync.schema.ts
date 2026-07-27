@@ -6,6 +6,7 @@ export const SyncTableName = z.enum([
   'customers',
   'creditEntries',
   'rates',
+  'offers',
   'categories',
   'stations',
   'productCategories',

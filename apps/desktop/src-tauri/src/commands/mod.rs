@@ -4,6 +4,7 @@ pub mod credit_entries;
 pub mod current_actor;
 pub mod customers;
 pub mod expenses;
+pub mod offers;
 pub mod orders;
 pub mod product_categories;
 pub mod products;

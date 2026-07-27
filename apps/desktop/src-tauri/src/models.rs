@@ -108,6 +108,26 @@ pub struct Product {
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct Offer {
+    pub id: String,
+    pub name: String,
+    pub active: bool,
+    pub applies_to_all_categories: bool,
+    pub category_ids: Option<String>,
+    pub days: Option<String>,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub min_duration_minutes: Option<i64>,
+    pub min_game_count: Option<i64>,
+    pub effect_type: String,
+    pub effect_value: i64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Order {
     pub id: String,
     pub method: String,

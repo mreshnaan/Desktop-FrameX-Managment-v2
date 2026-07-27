@@ -9,13 +9,15 @@ conditions and one of three effects (extra free time, percent off, flat amount o
 Applied to a session via a "system suggests, cashier confirms" inline prompt on Daily
 Sales — never automatically.
 
-**Architecture:** Eight sequential tasks, each an independently testable slice: (1-2)
+**Architecture:** Ten sequential tasks, each an independently testable slice: (1-2)
 the core `Offer` entity and its integration into `Session`'s amount computation on
 desktop (Rust/SQLite), (3) the sync engine, (4) Postgres/API, (5) a new permission,
 (6) shared frontend plumbing (schemas, wire types, hooks), (7) the Offers Management
 views in both apps, (8) the actual Daily Sales UX (eligibility prompt + discount
-display). This order means every layer below the UI is fully built and tested before
-any UI code depends on it.
+display), (9) an edge-case unit test audit, (10) a comprehensive end-to-end test
+suite. This order means every layer below the UI is fully built and tested before
+any UI code depends on it, and both testing tasks come last so they can exercise the
+complete, integrated feature rather than partial slices of it.
 
 **Tech Stack:** Rust, sqlx, SQLite, Prisma, PostgreSQL, TypeScript, React,
 react-hook-form, zod, TanStack Query.
@@ -1937,7 +1939,356 @@ git commit -m "feat(desktop,web): eligible-offer prompt, apply/clear, and discou
 
 ---
 
-## Final verification (after all 8 tasks)
+### Task 9: Edge-case unit test audit (Rust money math + `Offer` entity + counting)
+
+Added after the fact, per explicit request to maximize test coverage before the
+final review. Tasks 1-2's own review cycles already surfaced and fixed several
+boundary bugs (see the progress ledger) — this task targets specific boundary
+conditions those cycles didn't yet have dedicated tests for, rather than re-testing
+what's already covered.
+
+**Files:**
+- Modify: `apps/desktop/src-tauri/src/money.rs`
+- Modify: `apps/desktop/src-tauri/src/commands/offers.rs`
+- Modify: `apps/desktop/src-tauri/src/commands/sessions.rs`
+
+- [ ] **Step 1: Add boundary tests to `money.rs`**
+
+Add to the existing `#[cfg(test)] mod tests` block:
+
+```rust
+    #[test]
+    fn percent_off_at_100_zeroes_the_amount() {
+        let (final_amount, discount) = apply_discount_effect(600, "percentOff", 100);
+        assert_eq!(final_amount, 0);
+        assert_eq!(discount, 600);
+    }
+
+    #[test]
+    fn percent_off_at_0_is_a_no_op() {
+        let (final_amount, discount) = apply_discount_effect(600, "percentOff", 0);
+        assert_eq!(final_amount, 600);
+        assert_eq!(discount, 0);
+    }
+
+    #[test]
+    fn flat_off_at_0_is_a_no_op() {
+        let (final_amount, discount) = apply_discount_effect(600, "flatOff", 0);
+        assert_eq!(final_amount, 600);
+        assert_eq!(discount, 0);
+    }
+
+    #[test]
+    fn billable_minutes_at_exactly_the_free_allowance_is_zero_not_negative() {
+        // effect_value equal to the actual duration -- the whole session is free,
+        // not an error and not a negative duration.
+        assert_eq!(billable_minutes_after_extra_time(30, 30), 0);
+    }
+```
+
+- [ ] **Step 2: Add a storage-fidelity test to `offers.rs`**
+
+Add to the existing `#[cfg(test)] mod tests` block:
+
+```rust
+    #[tokio::test]
+    async fn applies_to_all_categories_and_category_ids_can_both_be_stored_as_given() {
+        // The Rust layer doesn't validate/clear category_ids when
+        // applies_to_all_categories is true -- that's a frontend zod-level
+        // concern (the form only shows the checklist when "All categories" is
+        // unchecked). This test documents that the CRUD layer is a faithful
+        // store, not a validator, so a future reader doesn't mistake the
+        // absence of that clearing logic for a bug.
+        let pool = setup_test_db().await;
+        let mut input = sample_input("percentOff", 10);
+        input.applies_to_all_categories = true;
+        input.category_ids = Some("cat-1,cat-2".to_string());
+        let offer = do_create_offer(&pool, input).await.unwrap();
+        assert!(offer.applies_to_all_categories);
+        assert_eq!(offer.category_ids, Some("cat-1,cat-2".to_string()));
+    }
+```
+
+- [ ] **Step 3: Add a soft-delete-exclusion test for `do_count_sessions_today` to `sessions.rs`**
+
+Add to the existing `#[cfg(test)] mod tests` block, near
+`count_sessions_today_counts_only_matching_customer_category_and_date`:
+
+```rust
+    #[tokio::test]
+    async fn count_sessions_today_excludes_soft_deleted_sessions() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_frame_station(&pool, 150).await;
+        let customer = crate::commands::customers::do_create_customer(&pool, "Priya".to_string(), "".to_string()).await.unwrap();
+
+        let mut last_id = String::new();
+        for _ in 0..3 {
+            let s = do_create_session(&pool, station_id.clone(), category_id.clone(), "frame".to_string(), "2026-07-27".to_string()).await.unwrap();
+            do_update_session(&pool, s.id.clone(), SessionPatch { customer_id: Some(Some(customer.id.clone())), ..Default::default() }).await.unwrap();
+            last_id = s.id;
+        }
+        do_delete_session(&pool, last_id).await.unwrap();
+
+        let count = do_count_sessions_today(&pool, "2026-07-27".to_string(), category_id, customer.id).await.unwrap();
+        assert_eq!(count, 2, "the soft-deleted session must not count toward the day's total");
+    }
+```
+
+(Confirm the exact `do_create_customer` signature during implementation, matching
+whatever Task 2 already settled on for its own tests.)
+
+- [ ] **Step 4: Verify**
+
+Run: `cd apps/desktop/src-tauri && cargo test`
+Expected: all prior tests plus these 7 new ones pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/desktop/src-tauri/src/money.rs apps/desktop/src-tauri/src/commands/offers.rs apps/desktop/src-tauri/src/commands/sessions.rs
+git commit -m "test(desktop): boundary-condition coverage for offer effect math, storage, and counting"
+```
+
+**Note for the final whole-branch review**: the backend (`do_update_session`) never
+re-validates an offer's own conditions (`active`, `days`, `startTime`/`endTime`,
+`startDate`/`endDate`, category scope, `minDurationMinutes`, `minGameCount`) before
+applying it — it trusts whatever `offerId` the frontend sends, and Task 8's
+eligibility check is the only gate, entirely client-side. This was flagged during
+Task 2's review as a deliberate (if not explicitly pre-approved) scope boundary, not
+a bug this task should silently fix — raise it explicitly in the final review so a
+human can decide whether backend-side re-validation belongs in this plan or a
+follow-up.
+
+---
+
+### Task 10: Comprehensive end-to-end test suite
+
+**Files:**
+- Create: `apps/desktop/e2e/specs/11-offers-and-discounts.spec.ts`
+
+**Interfaces:**
+- Consumes: `connectToApp`, `connectToWeb`, `login`, `loginWeb`, `navigateTo` (from
+  `apps/desktop/e2e/helpers.ts`, already used by every other spec — read
+  `06-cross-app-sync.spec.ts` and `05-roles.spec.ts` in full before writing this task,
+  as the two closest structural precedents: cross-app sync waiting pattern, and
+  role-permission-gating pattern).
+
+- [ ] **Step 1: Create `apps/desktop/e2e/specs/11-offers-and-discounts.spec.ts`**
+
+```ts
+import { test, expect, type Page, type Browser } from '@playwright/test';
+import { connectToApp, connectToWeb, login, loginWeb, navigateTo } from '../helpers';
+import { branding } from '../../src/config/branding';
+
+const DESKTOP_SYNC_WAIT = 35_000;
+
+test.describe.serial('offers and discounts', () => {
+  let desktopPage: Page;
+  let webBrowser: Browser;
+  let webPage: Page;
+
+  async function reloadWebAndWait() {
+    await webPage.reload();
+    await expect(webPage.getByRole('button', { name: 'Daily Sales' })).toBeVisible({ timeout: 15_000 });
+  }
+
+  async function waitForDesktopSync() {
+    await desktopPage.bringToFront();
+    await desktopPage.waitForTimeout(DESKTOP_SYNC_WAIT);
+  }
+
+  test.beforeAll(async () => {
+    desktopPage = await connectToApp();
+    await login(desktopPage);
+    ({ browser: webBrowser, page: webPage } = await connectToWeb());
+    await loginWeb(webPage);
+  });
+
+  test.afterAll(async () => {
+    await desktopPage.getByTestId('logout-button').click();
+    await webPage.getByTestId('logout-button').click();
+    await webBrowser.close();
+  });
+
+  test('Owner creates an offer scoped to a specific category', async () => {
+    await navigateTo(desktopPage, 'Offers');
+    await desktopPage.getByRole('button', { name: '+ New offer' }).click();
+    await desktopPage.getByLabel('Name').fill('E2E Weekday Special');
+    // "All categories" defaults checked -- uncheck it to scope to 8-Ball only.
+    await desktopPage.getByLabel('All categories').uncheck();
+    await desktopPage.getByRole('checkbox', { name: '8-Ball' }).check();
+    await desktopPage.getByLabel(/Minimum duration/).fill('90');
+    await desktopPage.getByLabel('Effect value').fill('30');
+    await desktopPage.getByRole('button', { name: 'Save' }).click();
+
+    await expect(desktopPage.getByText('E2E Weekday Special')).toBeVisible();
+    await expect(desktopPage.getByText('8-Ball', { exact: true })).toBeVisible();
+  });
+
+  test('Cashier cannot see Offers Management, but Owner can', async () => {
+    // Reuses this repo's existing custom-role pattern (see 05-roles.spec.ts) --
+    // a role with no offerManagement permission must not show the nav item.
+    await navigateTo(desktopPage, 'Roles');
+    const newRoleCard = desktopPage.locator('[data-slot="card"]').filter({ hasText: 'Add role' });
+    await newRoleCard.locator('#new-role-name').fill('E2E No Offers Role');
+    await newRoleCard.getByLabel('Daily Sales').check();
+    await newRoleCard.getByRole('button', { name: 'Create role' }).click();
+    await expect(desktopPage.getByText('E2E No Offers Role')).toBeVisible();
+
+    await navigateTo(desktopPage, 'User Management');
+    await desktopPage.locator('#user-name').fill('E2E No Offers User');
+    await desktopPage.locator('#user-username').fill('e2e-no-offers');
+    await desktopPage.locator('#user-pin').fill('9012');
+    await desktopPage.locator('#user-role').click();
+    await desktopPage.getByRole('option', { name: 'E2E No Offers Role' }).click();
+    await desktopPage.getByRole('button', { name: 'Create user' }).click();
+    await expect(desktopPage.getByRole('cell', { name: 'e2e-no-offers' })).toBeVisible();
+
+    await desktopPage.getByTestId('logout-button').click();
+    await login(desktopPage, 'e2e-no-offers', '9012');
+    await expect(desktopPage.getByRole('button', { name: 'Offers', exact: true })).toHaveCount(0);
+
+    await desktopPage.getByTestId('logout-button').click();
+    await login(desktopPage);
+    await expect(desktopPage.getByRole('button', { name: 'Offers', exact: true })).toBeVisible();
+  });
+
+  test('a time-billed session becomes eligible, the discount applies, and it can be cleared', async () => {
+    test.setTimeout(60_000);
+    await navigateTo(desktopPage, 'Daily Sales');
+    const stationCard = desktopPage.getByTestId('resource-card-8-Ball-Table 1');
+    await stationCard.getByRole('button', { name: '+ Add session' }).click();
+    const row = stationCard.getByTestId('session-row').last();
+
+    // 8-Ball is 200/hr per the shared fixture rate -- 1.5h = 300, meets the
+    // offer's 90-minute minimum.
+    await row.getByLabel('Start time').fill('13:00');
+    await row.getByLabel('End time').fill('14:30');
+    await expect(row.getByLabel('Amount')).toHaveValue('300');
+
+    await expect(row.getByText('E2E Weekday Special available')).toBeVisible({ timeout: 10_000 });
+    await row.getByRole('button', { name: 'Apply?' }).click();
+
+    // 30 min free of a 90-min session -- 60 billable min at 200/hr = 200.
+    await expect(row.getByLabel('Amount')).toHaveValue('200');
+    await expect(row.getByText(/E2E Weekday Special applied/)).toBeVisible();
+    await expect(row.getByText(new RegExp(`saved ${branding.currencySymbol}100`))).toBeVisible();
+
+    await row.getByRole('button', { name: 'Remove' }).click();
+    await expect(row.getByLabel('Amount')).toHaveValue('300');
+    await expect(row.getByText(/E2E Weekday Special applied/)).toHaveCount(0);
+
+    await row.getByRole('button', { name: 'Delete session' }).click();
+  });
+
+  test('the applied offer and discount sync to web read-only', async () => {
+    test.setTimeout(60_000);
+    await navigateTo(desktopPage, 'Daily Sales');
+    const stationCard = desktopPage.getByTestId('resource-card-8-Ball-Table 1');
+    await stationCard.getByRole('button', { name: '+ Add session' }).click();
+    const row = stationCard.getByTestId('session-row').last();
+    await row.getByLabel('Start time').fill('13:00');
+    await row.getByLabel('End time').fill('14:30');
+    await row.getByRole('button', { name: 'Apply?' }).click();
+    await expect(row.getByLabel('Amount')).toHaveValue('200');
+
+    await waitForDesktopSync();
+    await reloadWebAndWait();
+    await navigateTo(webPage, 'Daily Sales');
+    const webStationCard = webPage.getByTestId('resource-card-8-Ball-Table 1');
+    const webRow = webStationCard.getByTestId('session-row').last();
+    await expect(webRow).toContainText(`${branding.currencySymbol}200`);
+    await expect(webRow).toContainText('E2E Weekday Special');
+    await expect(webRow).toContainText(`${branding.currencySymbol}100`);
+
+    await desktopPage.bringToFront();
+    await row.getByRole('button', { name: 'Delete session' }).click();
+  });
+
+  test('a frame-billed quantity offer prompts exactly on the Nth game for the right customer', async () => {
+    test.setTimeout(90_000);
+    await navigateTo(desktopPage, 'Offers');
+    await desktopPage.getByRole('button', { name: '+ New offer' }).click();
+    await desktopPage.getByLabel('Name').fill('E2E Play 3 Get 1 Free');
+    await desktopPage.getByLabel('All categories').uncheck();
+    await desktopPage.getByRole('checkbox', { name: 'Snooker' }).check();
+    await desktopPage.getByLabel(/Minimum game count/).fill('4');
+    await desktopPage.getByRole('button', { name: 'Save' }).click();
+    await expect(desktopPage.getByText('E2E Play 3 Get 1 Free')).toBeVisible();
+
+    await navigateTo(desktopPage, 'Customers');
+    await desktopPage.locator('#customer-name').fill('E2E Frame Offer Customer');
+    await desktopPage.getByRole('button', { name: 'Add customer', exact: true }).click();
+    await expect(desktopPage.getByRole('cell', { name: 'E2E Frame Offer Customer', exact: true })).toBeVisible();
+
+    await navigateTo(desktopPage, 'Daily Sales');
+    const stationCard = desktopPage.getByTestId('resource-card-Snooker-Table 1');
+
+    for (let i = 0; i < 3; i++) {
+      await stationCard.getByRole('button', { name: '+ Add session' }).click();
+      const row = stationCard.getByTestId('session-row').last();
+      await row.getByLabel('Customer').click();
+      await desktopPage.getByRole('button', { name: 'E2E Frame Offer Customer', exact: true }).click();
+      // No prompt should appear on games 1-3.
+      await expect(row.getByText(/E2E Play 3 Get 1 Free available/)).toHaveCount(0);
+    }
+
+    await stationCard.getByRole('button', { name: '+ Add session' }).click();
+    const fourthRow = stationCard.getByTestId('session-row').last();
+    await fourthRow.getByLabel('Customer').click();
+    await desktopPage.getByRole('button', { name: 'E2E Frame Offer Customer', exact: true }).click();
+    await expect(fourthRow.getByText('E2E Play 3 Get 1 Free available')).toBeVisible({ timeout: 10_000 });
+
+    // Clean up: delete all 4 sessions and the customer.
+    for (let i = 0; i < 4; i++) {
+      await stationCard.getByTestId('session-row').last().getByRole('button', { name: 'Delete session' }).click();
+    }
+    await navigateTo(desktopPage, 'Customers');
+    await desktopPage.getByRole('button', { name: 'Delete E2E Frame Offer Customer' }).click();
+  });
+
+  test('cleanup: deactivate the two E2E offers', async () => {
+    await navigateTo(desktopPage, 'Offers');
+    const weekdaySpecialCard = desktopPage.locator('[data-slot="card"]').filter({ hasText: 'E2E Weekday Special' });
+    await weekdaySpecialCard.getByRole('button', { name: 'Deactivate' }).click();
+    const frameOfferCard = desktopPage.locator('[data-slot="card"]').filter({ hasText: 'E2E Play 3 Get 1 Free' });
+    await frameOfferCard.getByRole('button', { name: 'Deactivate' }).click();
+  });
+});
+```
+
+This spec is a best-effort draft based on the conventions of `05-roles.spec.ts` and
+`06-cross-app-sync.spec.ts` — during implementation, verify every selector against
+the actual rendered markup from Tasks 5-8 (exact label text for the "Minimum
+duration"/"Minimum game count"/"Effect value" fields, the exact wording of the
+apply-prompt and applied-offer text, the exact category `data-testid` names for
+Snooker's station) and adjust any that don't match. Do not silently skip a
+mismatched selector — fix the test to match the real UI, or fix the UI's
+`aria-label`/text if the mismatch reveals the UI itself is unclear.
+
+- [ ] **Step 2: Run the new spec against the real app**
+
+Run: `cd apps/desktop && pnpm exec playwright test e2e/specs/11-offers-and-discounts.spec.ts`
+Expected: all tests in the file pass against the real compiled app + live Postgres
+(same infrastructure every other spec in this directory already uses).
+
+- [ ] **Step 3: Run the full existing e2e suite to confirm no regression**
+
+Run: `cd apps/desktop && pnpm exec playwright test`
+Expected: all specs pass, including `06-cross-app-sync.spec.ts` (the closest
+neighbor to this new spec) and `07-quick-session-duration.spec.ts` (shares
+`SessionRow` markup with the offer-eligibility UI added in Task 8).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/desktop/e2e/specs/11-offers-and-discounts.spec.ts
+git commit -m "test(desktop): end-to-end coverage for offer creation, application, sync, and permission gating"
+```
+
+---
+
+## Final verification (after all 10 tasks)
 
 - [ ] `cargo test` in `apps/desktop/src-tauri` — full suite green.
 - [ ] `pnpm --filter @cue-room/desktop exec tsc -b` and `pnpm --filter @cue-room/web

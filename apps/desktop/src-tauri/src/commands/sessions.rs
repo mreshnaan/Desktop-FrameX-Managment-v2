@@ -242,7 +242,17 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     if let Some(v) = patch.method { existing.method = v; }
     if let Some(v) = patch.customer_id { existing.customer_id = v; }
     if let Some(v) = patch.paid_at { existing.paid_at = v; }
-    if let Some(v) = patch.offer_id.clone() { existing.offer_id = v; }
+    if let Some(v) = patch.offer_id.clone() {
+        // discount_amount is only ever meaningful alongside a real offer_id --
+        // clearing the offer must clear the recorded discount immediately,
+        // not wait for the recompute gate below (which may never fire again
+        // once offer_id is None, since its trigger condition depends on
+        // offer_id being Some).
+        if v.is_none() {
+            existing.discount_amount = None;
+        }
+        existing.offer_id = v;
+    }
 
     if time_patched && !existing.start.is_empty() && !existing.end.is_empty() {
         let rate: Option<(String, Option<i64>, Option<i64>)> = sqlx::query_as(
@@ -696,6 +706,54 @@ mod tests {
         assert_eq!(cleared.amount, 600);
         assert_eq!(cleared.discount_amount, None);
         assert_eq!(cleared.offer_id, None);
+    }
+
+    #[tokio::test]
+    async fn clearing_an_offer_resets_discount_amount_even_without_a_full_time_range() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 400, 200).await;
+        let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-27".to_string())
+            .await
+            .unwrap();
+        let with_time = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { start: Some("13:00".to_string()), end: Some("14:30".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        let offer = do_create_offer(&pool, crate::commands::offers::tests_helpers_offer_input_extra_time(30, Some(90))).await.unwrap();
+        let with_offer = do_update_session(
+            &pool,
+            with_time.id,
+            SessionPatch { offer_id: Some(Some(offer.id)), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(with_offer.amount, 400);
+        assert_eq!(with_offer.discount_amount, Some(200));
+
+        // Clear the end time first, leaving the range incomplete -- the
+        // recompute gate will be false for this patch.
+        let end_cleared = do_update_session(
+            &pool,
+            with_offer.id,
+            SessionPatch { end: Some("".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(end_cleared.amount, 400, "amount is untouched -- the gate is a true no-op");
+
+        // Now clear the offer itself, still without a full time range.
+        let offer_cleared = do_update_session(
+            &pool,
+            end_cleared.id,
+            SessionPatch { offer_id: Some(None), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(offer_cleared.offer_id, None);
+        assert_eq!(offer_cleared.discount_amount, None, "discount_amount must not survive the offer that produced it being cleared");
     }
 
     #[tokio::test]

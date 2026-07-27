@@ -5,6 +5,7 @@ import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useCategories, type CategoryWithStations, type CategoryStation } from '@/lib/hooks/useCategories';
 import DateStepper from '@/components/layout/DateStepper';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from '@/components/ui/collapsible-section';
 
 interface DailySalesViewProps {
   date: string;
@@ -104,9 +105,16 @@ function CategoryGroup({
   sessionsByStationId: Map<string, Session[]>;
   customers: Customer[];
 }) {
+  const categoryTotal = useMemo(
+    () => category.stations.reduce(
+      (sum, station) => sum + (sessionsByStationId.get(station.id) ?? []).reduce((s, session) => s + session.amount, 0),
+      0,
+    ),
+    [category.stations, sessionsByStationId],
+  );
+
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold">{category.name}</h2>
+    <CollapsibleSection title={category.name} subtitle={formatCurrency(categoryTotal)}>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {category.stations.map(station => (
           <StationCard
@@ -118,7 +126,7 @@ function CategoryGroup({
           />
         ))}
       </div>
-    </section>
+    </CollapsibleSection>
   );
 }
 

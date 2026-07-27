@@ -24,6 +24,7 @@ import DateStepper from '@/components/layout/DateStepper';
 import { CustomerCombobox } from '@/components/CustomerCombobox';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -170,9 +171,16 @@ function CategoryGroup({
   updateSession: UseMutationResult<Session, Error, { id: string; patch: Partial<Session> }>;
   deleteSession: UseMutationResult<void, Error, string>;
 }) {
+  const categoryTotal = useMemo(
+    () => category.stations.reduce(
+      (sum, station) => sum + (sessionsByStationId.get(station.id) ?? []).reduce((s, session) => s + session.amount, 0),
+      0,
+    ),
+    [category.stations, sessionsByStationId],
+  );
+
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold">{category.name}</h2>
+    <CollapsibleSection title={category.name} subtitle={formatCurrency(categoryTotal)}>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {category.stations.map(station => (
           <StationCard
@@ -188,7 +196,7 @@ function CategoryGroup({
           />
         ))}
       </div>
-    </section>
+    </CollapsibleSection>
   );
 }
 
@@ -268,8 +276,7 @@ function CafeSection({
   }, [orderItems]);
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold">Cafe</h2>
+    <CollapsibleSection title="Cafe" subtitle={formatCurrency(revenue)}>
       <Card data-testid="cafe-summary-card">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Cafe sales</CardTitle>
@@ -313,7 +320,7 @@ function CafeSection({
           )}
         </CardContent>
       </Card>
-    </section>
+    </CollapsibleSection>
   );
 }
 

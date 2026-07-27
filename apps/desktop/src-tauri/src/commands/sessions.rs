@@ -106,7 +106,7 @@ pub(crate) async fn do_create_session(
         start: String::new(),
         end: String::new(),
         amount,
-        method: "Cash".to_string(),
+        method: None,
         customer_id: None,
         updated_at: crate::time::now_iso(),
         deleted_at: None,
@@ -160,7 +160,7 @@ pub struct SessionPatch {
     pub start: Option<String>,
     pub end: Option<String>,
     pub amount: Option<i64>,
-    pub method: Option<String>,
+    pub method: Option<Option<String>>,
     pub customer_id: Option<Option<String>>,
 }
 
@@ -382,13 +382,13 @@ mod tests {
         let updated = do_update_session(
             &pool,
             with_time.id,
-            SessionPatch { method: Some("Card".to_string()), ..Default::default() },
+            SessionPatch { method: Some(Some("Card".to_string())), ..Default::default() },
         )
         .await
         .unwrap();
 
         assert_eq!(updated.amount, 200, "amount must be untouched when neither start nor end is patched");
-        assert_eq!(updated.method, "Card");
+        assert_eq!(updated.method, Some("Card".to_string()));
     }
 
     #[tokio::test]
@@ -416,5 +416,17 @@ mod tests {
         let in_july = do_list_sessions_between(&pool, "2026-07-01".to_string(), "2026-07-31".to_string()).await.unwrap();
 
         assert_eq!(in_july.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_new_session_has_no_method_chosen() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_frame_station(&pool, 150).await;
+
+        let session = do_create_session(&pool, station_id, category_id, "frame".to_string(), "2026-07-25".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(session.method, None);
     }
 }

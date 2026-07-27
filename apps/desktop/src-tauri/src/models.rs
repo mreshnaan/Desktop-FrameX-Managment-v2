@@ -50,7 +50,7 @@ pub struct Session {
     pub start: String,
     pub end: String,
     pub amount: i64,
-    pub method: String,
+    pub method: Option<String>,
     pub customer_id: Option<String>,
     pub updated_at: String,
     pub deleted_at: Option<String>,

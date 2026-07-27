@@ -185,6 +185,7 @@ model Session {
   updatedAt  DateTime  @default(now())
   deletedAt  DateTime?
   metadata   Json?
+  paidAt     DateTime?
 
   createdBy     String?
   createdByUser User?   @relation("SessionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)

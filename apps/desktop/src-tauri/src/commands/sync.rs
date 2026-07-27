@@ -201,12 +201,13 @@ async fn apply_sessions(tx: &mut Transaction<'_, Sqlite>, id: &str, row: &Value)
     }
     let metadata = json_metadata(row);
     sqlx::query(
-        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET station_id = excluded.station_id, date = excluded.date,
            start = excluded.start, \"end\" = excluded.\"end\", amount = excluded.amount,
            method = excluded.method, customer_id = excluded.customer_id,
-           updated_at = excluded.updated_at, deleted_at = excluded.deleted_at, metadata = excluded.metadata",
+           updated_at = excluded.updated_at, deleted_at = excluded.deleted_at, metadata = excluded.metadata,
+           paid_at = excluded.paid_at",
     )
     .bind(id)
     .bind(row["stationId"].as_str().unwrap_or_default())
@@ -219,6 +220,7 @@ async fn apply_sessions(tx: &mut Transaction<'_, Sqlite>, id: &str, row: &Value)
     .bind(row["updatedAt"].as_str().unwrap_or_default())
     .bind(row["deletedAt"].as_str())
     .bind(metadata)
+    .bind(row["paidAt"].as_str())
     .execute(&mut **tx)
     .await?;
     Ok(())

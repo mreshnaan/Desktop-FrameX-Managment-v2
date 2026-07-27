@@ -67,6 +67,7 @@ export interface SessionPatch {
   amount?: number;
   method?: string;
   customerId?: string | null;
+  paidAt?: string | null;
 }
 
 export interface OutboxEntryRow {

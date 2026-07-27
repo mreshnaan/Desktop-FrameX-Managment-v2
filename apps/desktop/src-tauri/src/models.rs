@@ -55,6 +55,7 @@ pub struct Session {
     pub updated_at: String,
     pub deleted_at: Option<String>,
     pub metadata: Option<String>,
+    pub paid_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]

@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 pub(crate) async fn do_list_all_sessions(pool: &SqlitePool) -> Result<Vec<Session>, String> {
     sqlx::query_as::<_, Session>(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at
          FROM sessions WHERE deleted_at IS NULL",
     )
     .fetch_all(pool)
@@ -31,7 +31,7 @@ pub(crate) async fn do_list_sessions_between(
     end_date: String,
 ) -> Result<Vec<Session>, String> {
     sqlx::query_as::<_, Session>(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at
          FROM sessions WHERE date >= ? AND date <= ? AND deleted_at IS NULL",
     )
     .bind(start_date)
@@ -54,7 +54,7 @@ pub async fn list_sessions_between(
 
 pub(crate) async fn do_list_sessions_for_date(pool: &SqlitePool, date: String) -> Result<Vec<Session>, String> {
     sqlx::query_as::<_, Session>(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at
          FROM sessions WHERE date = ? AND deleted_at IS NULL",
     )
     .bind(date)
@@ -75,6 +75,7 @@ fn session_payload(s: &Session, created_by: &Option<String>, updated_by: &Option
         "updatedAt": s.updated_at, "deletedAt": s.deleted_at,
         "createdBy": created_by, "updatedBy": updated_by,
         "metadata": s.metadata.as_deref().and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok()),
+        "paidAt": s.paid_at,
     })
 }
 
@@ -111,13 +112,14 @@ pub(crate) async fn do_create_session(
         updated_at: crate::time::now_iso(),
         deleted_at: None,
         metadata,
+        paid_at: None,
     };
 
     let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query(
-        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)",
+        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, created_by, updated_by, paid_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL)",
     )
     .bind(&session.id)
     .bind(&session.station_id)
@@ -162,6 +164,7 @@ pub struct SessionPatch {
     pub amount: Option<i64>,
     pub method: Option<Option<String>>,
     pub customer_id: Option<Option<String>>,
+    pub paid_at: Option<Option<String>>,
 }
 
 pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: SessionPatch) -> Result<Session, String> {
@@ -169,7 +172,7 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let mut existing: Session = sqlx::query_as(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at
          FROM sessions WHERE id = ?",
     )
     .bind(&id)
@@ -183,6 +186,7 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     if let Some(v) = patch.amount { existing.amount = v; }
     if let Some(v) = patch.method { existing.method = v; }
     if let Some(v) = patch.customer_id { existing.customer_id = v; }
+    if let Some(v) = patch.paid_at { existing.paid_at = v; }
 
     if time_patched && !existing.start.is_empty() && !existing.end.is_empty() {
         let rate: Option<(String, Option<i64>, Option<i64>)> = sqlx::query_as(
@@ -213,7 +217,7 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     existing.updated_at = crate::time::now_iso();
 
     sqlx::query(
-        "UPDATE sessions SET start = ?, \"end\" = ?, amount = ?, method = ?, customer_id = ?, updated_at = ?, updated_by = ?, metadata = ? WHERE id = ?",
+        "UPDATE sessions SET start = ?, \"end\" = ?, amount = ?, method = ?, customer_id = ?, updated_at = ?, updated_by = ?, metadata = ?, paid_at = ? WHERE id = ?",
     )
     .bind(&existing.start)
     .bind(&existing.end)
@@ -223,6 +227,7 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     .bind(&existing.updated_at)
     .bind(&actor)
     .bind(&existing.metadata)
+    .bind(&existing.paid_at)
     .bind(&id)
     .execute(&mut *tx)
     .await
@@ -428,5 +433,44 @@ mod tests {
             .unwrap();
 
         assert_eq!(session.method, None);
+    }
+
+    #[tokio::test]
+    async fn a_new_session_has_no_paid_at() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_frame_station(&pool, 150).await;
+
+        let session = do_create_session(&pool, station_id, category_id, "frame".to_string(), "2026-07-25".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(session.paid_at, None);
+    }
+
+    #[tokio::test]
+    async fn paid_at_can_be_set_and_cleared_through_a_patch() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_frame_station(&pool, 150).await;
+        let session = do_create_session(&pool, station_id, category_id, "frame".to_string(), "2026-07-25".to_string())
+            .await
+            .unwrap();
+
+        let paid = do_update_session(
+            &pool,
+            session.id.clone(),
+            SessionPatch { paid_at: Some(Some("2026-07-25T10:00:00Z".to_string())), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(paid.paid_at, Some("2026-07-25T10:00:00Z".to_string()));
+
+        let cleared = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { paid_at: Some(None), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(cleared.paid_at, None);
     }
 }

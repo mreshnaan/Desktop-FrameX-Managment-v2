@@ -58,6 +58,7 @@ pub fn run() {
             commands::sessions::create_session,
             commands::sessions::update_session,
             commands::sessions::delete_session,
+            commands::sessions::count_sessions_today,
             commands::expenses::list_expenses_for_date,
             commands::expenses::list_expenses_between,
             commands::expenses::create_expense,

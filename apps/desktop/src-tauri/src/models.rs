@@ -56,6 +56,8 @@ pub struct Session {
     pub deleted_at: Option<String>,
     pub metadata: Option<String>,
     pub paid_at: Option<String>,
+    pub offer_id: Option<String>,
+    pub discount_amount: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]

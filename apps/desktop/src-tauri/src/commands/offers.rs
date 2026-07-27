@@ -177,6 +177,26 @@ pub async fn update_offer(pool: State<'_, SqlitePool>, id: String, input: OfferI
     do_update_offer(pool.inner(), id, input).await
 }
 
+// Test-only helper used by sessions.rs's own tests to build a minimal
+// extraTime OfferInput without duplicating every field default inline.
+pub(crate) fn tests_helpers_offer_input_extra_time(free_minutes: i64, min_duration_minutes: Option<i64>) -> OfferInput {
+    OfferInput {
+        name: "Weekday Special".to_string(),
+        active: true,
+        applies_to_all_categories: true,
+        category_ids: None,
+        days: None,
+        start_time: None,
+        end_time: None,
+        start_date: None,
+        end_date: None,
+        min_duration_minutes,
+        min_game_count: None,
+        effect_type: "extraTime".to_string(),
+        effect_value: free_minutes,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

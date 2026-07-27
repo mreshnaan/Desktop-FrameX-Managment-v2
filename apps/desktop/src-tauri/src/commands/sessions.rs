@@ -1,7 +1,9 @@
 use crate::commands::current_actor::get_current_actor;
 use crate::commands::sync::enqueue_outbox_tx;
-use crate::models::Session;
-use crate::money::{calc_frame_amount, calc_time_amount};
+use crate::models::{Session, Offer};
+use crate::money::{calc_frame_amount, calc_time_amount, calc_time_amount_for_duration, apply_discount_effect, billable_minutes_after_extra_time};
+use crate::money::duration_minutes;
+use crate::commands::offers::OFFER_COLUMNS;
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -10,7 +12,7 @@ use uuid::Uuid;
 
 pub(crate) async fn do_list_all_sessions(pool: &SqlitePool) -> Result<Vec<Session>, String> {
     sqlx::query_as::<_, Session>(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at, offer_id, discount_amount
          FROM sessions WHERE deleted_at IS NULL",
     )
     .fetch_all(pool)
@@ -31,7 +33,7 @@ pub(crate) async fn do_list_sessions_between(
     end_date: String,
 ) -> Result<Vec<Session>, String> {
     sqlx::query_as::<_, Session>(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at, offer_id, discount_amount
          FROM sessions WHERE date >= ? AND date <= ? AND deleted_at IS NULL",
     )
     .bind(start_date)
@@ -54,7 +56,7 @@ pub async fn list_sessions_between(
 
 pub(crate) async fn do_list_sessions_for_date(pool: &SqlitePool, date: String) -> Result<Vec<Session>, String> {
     sqlx::query_as::<_, Session>(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at, offer_id, discount_amount
          FROM sessions WHERE date = ? AND deleted_at IS NULL",
     )
     .bind(date)
@@ -68,6 +70,36 @@ pub async fn list_sessions_for_date(pool: State<'_, SqlitePool>, date: String) -
     do_list_sessions_for_date(pool.inner(), date).await
 }
 
+pub(crate) async fn do_count_sessions_today(
+    pool: &SqlitePool,
+    date: String,
+    category_id: String,
+    customer_id: String,
+) -> Result<i64, String> {
+    let count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM sessions s
+         JOIN stations st ON s.station_id = st.id
+         WHERE st.category_id = ? AND s.customer_id = ? AND s.date = ? AND s.deleted_at IS NULL",
+    )
+    .bind(&category_id)
+    .bind(&customer_id)
+    .bind(&date)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(count.0)
+}
+
+#[tauri::command]
+pub async fn count_sessions_today(
+    pool: State<'_, SqlitePool>,
+    date: String,
+    category_id: String,
+    customer_id: String,
+) -> Result<i64, String> {
+    do_count_sessions_today(pool.inner(), date, category_id, customer_id).await
+}
+
 fn session_payload(s: &Session, created_by: &Option<String>, updated_by: &Option<String>) -> serde_json::Value {
     json!({
         "id": s.id, "stationId": s.station_id, "date": s.date, "start": s.start, "end": s.end,
@@ -76,6 +108,8 @@ fn session_payload(s: &Session, created_by: &Option<String>, updated_by: &Option
         "createdBy": created_by, "updatedBy": updated_by,
         "metadata": s.metadata.as_deref().and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok()),
         "paidAt": s.paid_at,
+        "offerId": s.offer_id,
+        "discountAmount": s.discount_amount,
     })
 }
 
@@ -113,13 +147,15 @@ pub(crate) async fn do_create_session(
         deleted_at: None,
         metadata,
         paid_at: None,
+        offer_id: None,
+        discount_amount: None,
     };
 
     let actor = get_current_actor(pool).await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query(
-        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, created_by, updated_by, paid_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL)",
+        "INSERT INTO sessions (id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, created_by, updated_by, paid_at, offer_id, discount_amount)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, NULL)",
     )
     .bind(&session.id)
     .bind(&session.station_id)
@@ -168,6 +204,8 @@ pub struct SessionPatch {
     pub customer_id: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_some")]
     pub paid_at: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_some")]
+    pub offer_id: Option<Option<String>>,
 }
 
 // Distinguishes "field absent" (outer None, via #[serde(default)]) from
@@ -188,7 +226,7 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let mut existing: Session = sqlx::query_as(
-        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at
+        "SELECT id, station_id, date, start, \"end\", amount, method, customer_id, updated_at, deleted_at, metadata, paid_at, offer_id, discount_amount
          FROM sessions WHERE id = ?",
     )
     .bind(&id)
@@ -197,12 +235,14 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     .map_err(|e| e.to_string())?;
 
     let time_patched = patch.start.is_some() || patch.end.is_some();
+    let offer_patched = patch.offer_id.is_some();
     if let Some(v) = patch.start { existing.start = v; }
     if let Some(v) = patch.end { existing.end = v; }
     if let Some(v) = patch.amount { existing.amount = v; }
     if let Some(v) = patch.method { existing.method = v; }
     if let Some(v) = patch.customer_id { existing.customer_id = v; }
     if let Some(v) = patch.paid_at { existing.paid_at = v; }
+    if let Some(v) = patch.offer_id.clone() { existing.offer_id = v; }
 
     if time_patched && !existing.start.is_empty() && !existing.end.is_empty() {
         let rate: Option<(String, Option<i64>, Option<i64>)> = sqlx::query_as(
@@ -230,10 +270,73 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
             }
         }
     }
+
+    if offer_patched {
+        // Applying (or clearing) an offer always recomputes from the category's
+        // base rate, ignoring any prior manual amount edit or previously
+        // applied offer's discount -- see the plan's Global Constraints for why
+        // (predictability: "price this session correctly, with the discount,"
+        // never "discount whatever number happens to be in the box").
+        let category_row: Option<(String, Option<i64>, Option<i64>, Option<i64>)> = sqlx::query_as(
+            "SELECT c.billing_type, r.hour_rate, r.half_rate, r.frame_rate
+             FROM stations st JOIN categories c ON c.id = st.category_id
+             LEFT JOIN rates r ON r.category_id = c.id
+             WHERE st.id = ?",
+        )
+        .bind(&existing.station_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let base_amount = match &category_row {
+            Some((billing_type, hour_rate, half_rate, _)) if billing_type == "time" => {
+                calc_time_amount(&existing.start, &existing.end, hour_rate.unwrap_or(0), half_rate.unwrap_or(0))
+            }
+            Some((billing_type, _, _, frame_rate)) if billing_type == "frame" => {
+                calc_frame_amount(frame_rate.unwrap_or(0))
+            }
+            _ => existing.amount,
+        };
+
+        match &existing.offer_id {
+            None => {
+                existing.amount = base_amount;
+                existing.discount_amount = None;
+            }
+            Some(offer_id) => {
+                let offer: Option<Offer> = sqlx::query_as(&format!(
+                    "SELECT {OFFER_COLUMNS} FROM offers WHERE id = ?"
+                ))
+                .bind(offer_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+
+                if let Some(offer) = offer {
+                    let (final_amount, discount) = if offer.effect_type == "extraTime" {
+                        let actual_minutes = duration_minutes(&existing.start, &existing.end);
+                        let billable = billable_minutes_after_extra_time(actual_minutes, offer.effect_value);
+                        let hour_rate = category_row.as_ref().and_then(|r| r.1).unwrap_or(0);
+                        let half_rate = category_row.as_ref().and_then(|r| r.2).unwrap_or(0);
+                        let discounted_base = calc_time_amount_for_duration(billable, hour_rate, half_rate);
+                        (discounted_base, (base_amount - discounted_base).max(0))
+                    } else {
+                        apply_discount_effect(base_amount, &offer.effect_type, offer.effect_value)
+                    };
+                    existing.amount = final_amount;
+                    existing.discount_amount = Some(discount);
+                } else {
+                    existing.amount = base_amount;
+                    existing.discount_amount = None;
+                }
+            }
+        }
+    }
+
     existing.updated_at = crate::time::now_iso();
 
     sqlx::query(
-        "UPDATE sessions SET start = ?, \"end\" = ?, amount = ?, method = ?, customer_id = ?, updated_at = ?, updated_by = ?, metadata = ?, paid_at = ? WHERE id = ?",
+        "UPDATE sessions SET start = ?, \"end\" = ?, amount = ?, method = ?, customer_id = ?, updated_at = ?, updated_by = ?, metadata = ?, paid_at = ?, offer_id = ?, discount_amount = ? WHERE id = ?",
     )
     .bind(&existing.start)
     .bind(&existing.end)
@@ -244,6 +347,8 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
     .bind(&actor)
     .bind(&existing.metadata)
     .bind(&existing.paid_at)
+    .bind(&existing.offer_id)
+    .bind(existing.discount_amount)
     .bind(&id)
     .execute(&mut *tx)
     .await
@@ -297,6 +402,7 @@ mod tests {
     use crate::commands::categories::do_create_category;
     use crate::commands::rates::do_upsert_rate;
     use crate::commands::stations::do_create_station;
+    use crate::commands::offers::do_create_offer;
     use crate::db::test_helpers::setup_test_db;
 
     async fn seed_time_station(pool: &SqlitePool, hour_rate: i64, half_rate: i64) -> (String, String) {
@@ -500,5 +606,87 @@ mod tests {
 
         let explicit_value: SessionPatch = serde_json::from_str(r#"{"customerId": "abc123"}"#).unwrap();
         assert_eq!(explicit_value.customer_id, Some(Some("abc123".to_string())), "a real value must set the field");
+    }
+
+    #[tokio::test]
+    async fn applying_an_offer_recomputes_from_the_base_rate_and_records_the_discount() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 400, 200).await;
+        let session = do_create_session(&pool, station_id, category_id.clone(), "time".to_string(), "2026-07-27".to_string())
+            .await
+            .unwrap();
+        let with_time = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { start: Some("13:00".to_string()), end: Some("14:30".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(with_time.amount, 600); // 1.5h at 400/hr + 200/half = 600
+
+        let offer = do_create_offer(&pool, crate::commands::offers::tests_helpers_offer_input_extra_time(30, Some(90))).await.unwrap();
+
+        let with_offer = do_update_session(
+            &pool,
+            with_time.id,
+            SessionPatch { offer_id: Some(Some(offer.id.clone())), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(with_offer.amount, 400); // billable drops to 60 min -> 1h at 400
+        assert_eq!(with_offer.discount_amount, Some(200));
+        assert_eq!(with_offer.offer_id, Some(offer.id));
+    }
+
+    #[tokio::test]
+    async fn clearing_an_offer_restores_the_undiscounted_amount() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 400, 200).await;
+        let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-27".to_string())
+            .await
+            .unwrap();
+        let with_time = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { start: Some("13:00".to_string()), end: Some("14:30".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        let offer = do_create_offer(&pool, crate::commands::offers::tests_helpers_offer_input_extra_time(30, Some(90))).await.unwrap();
+        let with_offer = do_update_session(
+            &pool,
+            with_time.id,
+            SessionPatch { offer_id: Some(Some(offer.id)), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(with_offer.amount, 400);
+
+        let cleared = do_update_session(
+            &pool,
+            with_offer.id,
+            SessionPatch { offer_id: Some(None), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(cleared.amount, 600);
+        assert_eq!(cleared.discount_amount, None);
+        assert_eq!(cleared.offer_id, None);
+    }
+
+    #[tokio::test]
+    async fn count_sessions_today_counts_only_matching_customer_category_and_date() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_frame_station(&pool, 150).await;
+        let customer = crate::commands::customers::do_create_customer(&pool, "Ravi".to_string(), "".to_string()).await.unwrap();
+
+        for _ in 0..3 {
+            let s = do_create_session(&pool, station_id.clone(), category_id.clone(), "frame".to_string(), "2026-07-27".to_string()).await.unwrap();
+            do_update_session(&pool, s.id, SessionPatch { customer_id: Some(Some(customer.id.clone())), ..Default::default() }).await.unwrap();
+        }
+
+        let count = do_count_sessions_today(&pool, "2026-07-27".to_string(), category_id, customer.id).await.unwrap();
+        assert_eq!(count, 3);
     }
 }

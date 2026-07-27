@@ -271,7 +271,7 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
         }
     }
 
-    if offer_patched {
+    if offer_patched || (time_patched && existing.offer_id.is_some()) {
         // Applying (or clearing) an offer always recomputes from the category's
         // base rate, ignoring any prior manual amount edit or previously
         // applied offer's discount -- see the plan's Global Constraints for why
@@ -288,9 +288,17 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
         .await
         .map_err(|e| e.to_string())?;
 
+        let has_full_time_range = !existing.start.is_empty() && !existing.end.is_empty();
         let base_amount = match &category_row {
             Some((billing_type, hour_rate, half_rate, _)) if billing_type == "time" => {
-                calc_time_amount(&existing.start, &existing.end, hour_rate.unwrap_or(0), half_rate.unwrap_or(0))
+                if has_full_time_range {
+                    calc_time_amount(&existing.start, &existing.end, hour_rate.unwrap_or(0), half_rate.unwrap_or(0))
+                } else {
+                    // Still running (no end time yet) -- nothing to recompute
+                    // from yet, leave the amount as it already is rather than
+                    // computing a spurious 0 from an empty duration.
+                    existing.amount
+                }
             }
             Some((billing_type, _, _, frame_rate)) if billing_type == "frame" => {
                 calc_frame_amount(frame_rate.unwrap_or(0))
@@ -313,13 +321,21 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
                 .map_err(|e| e.to_string())?;
 
                 if let Some(offer) = offer {
-                    let (final_amount, discount) = if offer.effect_type == "extraTime" {
+                    let is_time_billed = category_row.as_ref().map(|r| r.0.as_str()) == Some("time");
+                    let (final_amount, discount) = if offer.effect_type == "extraTime" && is_time_billed && has_full_time_range {
                         let actual_minutes = duration_minutes(&existing.start, &existing.end);
                         let billable = billable_minutes_after_extra_time(actual_minutes, offer.effect_value);
                         let hour_rate = category_row.as_ref().and_then(|r| r.1).unwrap_or(0);
                         let half_rate = category_row.as_ref().and_then(|r| r.2).unwrap_or(0);
                         let discounted_base = calc_time_amount_for_duration(billable, hour_rate, half_rate);
                         (discounted_base, (base_amount - discounted_base).max(0))
+                    } else if offer.effect_type == "extraTime" {
+                        // extraTime doesn't apply to a non-time-billed category
+                        // (frame-billed has no "duration" to reduce), and doesn't
+                        // apply to a still-running time-billed session with no
+                        // end time yet -- both are a no-op rather than a
+                        // spurious full discount.
+                        (base_amount, 0)
                     } else {
                         apply_discount_effect(base_amount, &offer.effect_type, offer.effect_value)
                     };
@@ -673,6 +689,89 @@ mod tests {
         assert_eq!(cleared.amount, 600);
         assert_eq!(cleared.discount_amount, None);
         assert_eq!(cleared.offer_id, None);
+    }
+
+    #[tokio::test]
+    async fn editing_end_time_after_applying_an_offer_keeps_the_discount() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 400, 200).await;
+        let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-27".to_string())
+            .await
+            .unwrap();
+        let with_time = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { start: Some("13:00".to_string()), end: Some("14:30".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        let offer = do_create_offer(&pool, crate::commands::offers::tests_helpers_offer_input_extra_time(30, Some(90))).await.unwrap();
+        let with_offer = do_update_session(
+            &pool,
+            with_time.id,
+            SessionPatch { offer_id: Some(Some(offer.id.clone())), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(with_offer.amount, 400);
+
+        // Extend the session by 30 minutes (now 2h total) without resending offer_id.
+        let extended = do_update_session(
+            &pool,
+            with_offer.id,
+            SessionPatch { end: Some("15:00".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+        // 2h actual - 30 free = 90 billable min = 1h at 400 + 30min at 200 = 600.
+        assert_eq!(extended.amount, 600);
+        assert_eq!(extended.offer_id, Some(offer.id));
+        assert!(extended.discount_amount.is_some());
+    }
+
+    #[tokio::test]
+    async fn extra_time_offer_is_a_no_op_on_a_frame_billed_session() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_frame_station(&pool, 150).await;
+        let session = do_create_session(&pool, station_id, category_id, "frame".to_string(), "2026-07-27".to_string())
+            .await
+            .unwrap();
+        assert_eq!(session.amount, 150);
+
+        let offer = do_create_offer(&pool, crate::commands::offers::tests_helpers_offer_input_extra_time(30, None)).await.unwrap();
+        let with_offer = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { offer_id: Some(Some(offer.id)), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(with_offer.amount, 150, "extraTime must not apply to a frame-billed session");
+        assert_eq!(with_offer.discount_amount, Some(0));
+    }
+
+    #[tokio::test]
+    async fn applying_an_offer_to_a_still_running_session_does_not_zero_the_amount() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 400, 200).await;
+        let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-27".to_string())
+            .await
+            .unwrap();
+        // No start/end patched -- session is still "running" with amount 0.
+        let offer = do_create_offer(&pool, crate::commands::offers::tests_helpers_offer_input_extra_time(30, None)).await.unwrap();
+
+        let with_offer = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { offer_id: Some(Some(offer.id)), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(with_offer.amount, 0, "amount was already 0 before any time was set -- must stay unchanged, not error");
+        assert_eq!(with_offer.discount_amount, Some(0));
     }
 
     #[tokio::test]

@@ -48,6 +48,7 @@ export function CustomerCombobox({ customers, value, onChange }: CustomerCombobo
       onOpenChange={o => {
         setOpen(o);
         if (!o) {
+          addCustomer.reset();
           setAdding(false);
           setSearch('');
         }
@@ -91,7 +92,12 @@ export function CustomerCombobox({ customers, value, onChange }: CustomerCombobo
               >
                 Add customer
               </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => { addCustomer.reset(); setAdding(false); }}
+              >
                 Cancel
               </Button>
             </div>

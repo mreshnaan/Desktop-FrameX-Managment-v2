@@ -77,7 +77,7 @@ function SummaryStrip({ summary }: { summary: Summary }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
       {items.map(item => (
         <Card key={item.label} size="sm">
           <CardHeader>

@@ -162,9 +162,25 @@ pub struct SessionPatch {
     pub start: Option<String>,
     pub end: Option<String>,
     pub amount: Option<i64>,
+    #[serde(default, deserialize_with = "deserialize_some")]
     pub method: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_some")]
     pub customer_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_some")]
     pub paid_at: Option<Option<String>>,
+}
+
+// Distinguishes "field absent" (outer None, via #[serde(default)]) from
+// "field present" -- whether its value is JSON null (inner None, a clear)
+// or a real value (inner Some) -- which a plain Option<Option<T>> cannot
+// do on its own, since serde's Option deserializer short-circuits on
+// `null` before ever reaching the inner type.
+fn deserialize_some<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: serde::Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    serde::Deserialize::deserialize(deserializer).map(Some)
 }
 
 pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: SessionPatch) -> Result<Session, String> {
@@ -472,5 +488,17 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(cleared.paid_at, None);
+    }
+
+    #[test]
+    fn session_patch_distinguishes_absent_null_and_present_for_nested_option_fields() {
+        let absent: SessionPatch = serde_json::from_str(r#"{}"#).unwrap();
+        assert_eq!(absent.customer_id, None, "field absent from JSON must not touch the existing value");
+
+        let explicit_null: SessionPatch = serde_json::from_str(r#"{"customerId": null}"#).unwrap();
+        assert_eq!(explicit_null.customer_id, Some(None), "an explicit JSON null must clear the field");
+
+        let explicit_value: SessionPatch = serde_json::from_str(r#"{"customerId": "abc123"}"#).unwrap();
+        assert_eq!(explicit_value.customer_id, Some(Some("abc123".to_string())), "a real value must set the field");
     }
 }

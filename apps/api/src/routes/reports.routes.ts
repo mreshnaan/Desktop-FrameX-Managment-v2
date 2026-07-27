@@ -30,18 +30,21 @@ reportsRouter.get('/monthly', async (req, res) => {
     _sum: { amount: true },
   });
 
-  const sessionMap = new Map<string, number>();
+  const sessionMap = new Map<string, { date: string; categoryId: string; method: string | null; total: number }>();
   for (const s of sessionGroup) {
     const categoryId = categoryByStationId.get(s.stationId);
     if (!categoryId) continue;
-    const key = `${s.date}:${categoryId}:${s.method}`;
-    sessionMap.set(key, (sessionMap.get(key) ?? 0) + (s._sum.amount ?? 0));
+    const key = `${s.date}:${categoryId}:${s.method ?? ''}`;
+    const existing = sessionMap.get(key);
+    sessionMap.set(key, {
+      date: s.date,
+      categoryId,
+      method: s.method,
+      total: (existing?.total ?? 0) + (s._sum.amount ?? 0),
+    });
   }
 
-  const sessionTotals = Array.from(sessionMap.entries()).map(([key, total]) => {
-    const [date, categoryId, method] = key.split(':');
-    return { date, categoryId, method, total };
-  });
+  const sessionTotals = Array.from(sessionMap.values());
 
   const expenseGroup = await prisma.expense.groupBy({
     by: ['date', 'method'],

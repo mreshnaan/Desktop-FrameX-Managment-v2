@@ -6,7 +6,7 @@ use sqlx::{FromRow, SqlitePool};
 pub struct DailyCategoryTotal {
     pub date: String,
     pub category_id: String,
-    pub method: String,
+    pub method: Option<String>,
     pub total: i64,
 }
 

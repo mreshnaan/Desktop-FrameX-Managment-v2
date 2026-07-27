@@ -259,7 +259,7 @@ export const commands = {
 export interface DailyCategoryTotal {
   date: string;
   categoryId: string;
-  method: 'Cash' | 'Card' | 'Credit';
+  method: 'Cash' | 'Card' | 'Credit' | null;
   total: number;
 }
 

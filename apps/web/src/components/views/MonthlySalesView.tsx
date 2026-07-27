@@ -38,7 +38,7 @@ interface MonthCursor {
 interface DailyCategoryTotal {
   date: string;
   categoryId: string;
-  method: string;
+  method: string | null;
   total: number;
 }
 
@@ -75,6 +75,7 @@ interface CategoryDayRow {
   Cash: number;
   Card: number;
   Credit: number;
+  Pending: number;
   total: number;
 }
 
@@ -186,12 +187,14 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
     if (!filter.startsWith('cat-')) return [];
     const catId = filter.replace('cat-', '');
 
-    const byDate = new Map<string, { Cash: number; Card: number; Credit: number; total: number }>();
+    const byDate = new Map<string, { Cash: number; Card: number; Credit: number; Pending: number; total: number }>();
     for (const s of sessionTotals) {
       if (s.categoryId !== catId) continue;
-      const entry = byDate.get(s.date) ?? { Cash: 0, Card: 0, Credit: 0, total: 0 };
+      const entry = byDate.get(s.date) ?? { Cash: 0, Card: 0, Credit: 0, Pending: 0, total: 0 };
       if (s.method === 'Cash' || s.method === 'Card' || s.method === 'Credit') {
         entry[s.method as 'Cash' | 'Card' | 'Credit'] += s.total;
+      } else {
+        entry.Pending += s.total;
       }
       entry.total += s.total;
       byDate.set(s.date, entry);
@@ -199,7 +202,7 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
 
     return Array.from({ length: daysInMonth }, (_, i) => {
       const date = dateStrOf(new Date(cursor.year, cursor.month, i + 1));
-      const entry = byDate.get(date) ?? { Cash: 0, Card: 0, Credit: 0, total: 0 };
+      const entry = byDate.get(date) ?? { Cash: 0, Card: 0, Credit: 0, Pending: 0, total: 0 };
       return { date, ...entry };
     });
   }, [filter, sessionTotals, cursor, daysInMonth]);
@@ -284,6 +287,7 @@ export default function MonthlySalesView({ onJumpToDate }: MonthlySalesViewProps
         ch.accessor('Card', { header: 'Card', cell: info => formatCurrency(info.getValue()) }),
         ch.accessor('Cash', { header: 'Cash', cell: info => formatCurrency(info.getValue()) }),
         ch.accessor('Credit', { header: 'Credit', cell: info => formatCurrency(info.getValue()) }),
+        ch.accessor('Pending', { header: 'Pending', cell: info => formatCurrency(info.getValue()) }),
         ch.accessor('total', { header: 'Total', cell: info => formatCurrency(info.getValue()) }),
       ];
     }

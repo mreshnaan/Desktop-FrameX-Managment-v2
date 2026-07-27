@@ -343,6 +343,34 @@ describe('authenticated routes', () => {
     await prisma.session.deleteMany({ where: { id: sessionId } });
   });
 
+  it('GET /reports/monthly reports a pending (null-method) session as method: null, not the string "null"', async () => {
+    const station = await prisma.station.findFirstOrThrow({ where: { name: 'Table 1' } });
+    const sessionId = crypto.randomUUID();
+
+    await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [{
+          table: 'sessions', op: 'upsert', id: sessionId,
+          payload: { id: sessionId, stationId: station.id, date: '2026-07-01', start: '10:00', end: '11:00', amount: 400, method: null, customerId: null },
+          clientUpdatedAt: new Date().toISOString(),
+        }],
+      }),
+    });
+
+    const res = await fetch(
+      `${baseUrl}/reports/monthly?startDate=2026-07-01&endDate=2026-07-01&startUtc=2026-07-01T00:00:00.000Z&endUtc=2026-07-01T23:59:59.999Z`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    expect(res.status).toBe(200);
+    const body = await json<{ sessionTotals: { date: string; method: string | null; total: number }[] }>(res);
+    const pendingRow = body.sessionTotals.find(s => s.date === '2026-07-01' && s.total === 400);
+    expect(pendingRow?.method).toBeNull();
+
+    await prisma.session.deleteMany({ where: { id: sessionId } });
+  });
+
   // -------------------------------------------------------------------------
   // GET /expenses
   // -------------------------------------------------------------------------

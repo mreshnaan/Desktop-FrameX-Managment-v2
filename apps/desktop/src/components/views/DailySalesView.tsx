@@ -21,6 +21,7 @@ import { useOrdersBetween, orderTimeOf } from '@/lib/hooks/useOrders';
 import { useProducts } from '@/lib/hooks/useProducts';
 import type { OrderRow, OrderItemRow } from '@/lib/tauri/commands';
 import DateStepper from '@/components/layout/DateStepper';
+import { CustomerCombobox } from '@/components/CustomerCombobox';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -436,41 +437,11 @@ function SessionRow({
           </SelectContent>
         </Select>
 
-        {customers.length > 0 ? (
-          <Select
-            value={session.customerId}
-            onValueChange={value => commit({ customerId: value })}
-          >
-            <SelectTrigger className="w-36" aria-label="Customer">
-              {/* SelectValue only resolves a display label from the registered
-                  `items`/`itemToStringLabel` root props, not from SelectItem
-                  children/label — since customerId (the value) differs from
-                  the customer's name (the label), it must be resolved
-                  explicitly here or the trigger renders the raw id. */}
-              <SelectValue placeholder="No customer">
-                {(value: string | null) => customers.find(c => c.id === value)?.name ?? 'No customer'}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={null} label="No customer">No customer</SelectItem>
-              {customers.map(c => (
-                <SelectItem key={c.id} value={c.id} label={c.name}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled
-            className="w-36 justify-start text-muted-foreground"
-          >
-            Add customers first
-          </Button>
-        )}
+        <CustomerCombobox
+          customers={customers}
+          value={session.customerId}
+          onChange={value => commit({ customerId: value })}
+        />
 
         <Button
           variant="ghost"

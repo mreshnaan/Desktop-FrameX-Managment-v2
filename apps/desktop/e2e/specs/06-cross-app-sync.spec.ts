@@ -130,8 +130,11 @@ test.describe.serial('cross-app sync (desktop <-> web)', () => {
     // Amount commits on blur -- confirm it landed before moving on.
     await sessionRow.getByLabel('Amount').blur();
     await expect(sessionRow.getByLabel('Amount')).toHaveValue('300');
+    // CustomerCombobox (sub-project 6's searchable picker) renders its list as
+    // plain buttons, not an ARIA listbox/option -- unlike the payment-method
+    // <Select> below, which still uses Base UI Select and keeps its "option" role.
     await sessionRow.getByLabel('Customer').click();
-    await desktopPage.getByRole('option', { name: 'E2E Analytics Customer' }).click();
+    await desktopPage.getByRole('button', { name: 'E2E Analytics Customer', exact: true }).click();
     await expect(sessionRow.getByLabel('Customer')).toContainText('E2E Analytics Customer');
     await sessionRow.getByLabel('Payment method').click();
     await desktopPage.getByRole('option', { name: 'Credit' }).click();

@@ -17,12 +17,13 @@ implicitly a "buy N games get one free" loyalty-style promo. Building one system
 tries to cover all of it at once would be a mess, so this sub-project scopes tightly:
 
 **In scope:** an `Offer` entity — a named, togglable-on/off promotional rule scoped to
-one category, with optional day-of-week / time-of-day / date-range / minimum-duration
-/ minimum-game-count conditions, and one of three effects (extra free time, percent
-off, flat amount off). A new admin-only Offers Management view to create/edit/toggle
-them. On Daily Sales, when a session becomes eligible for an active offer, an inline
-prompt lets the cashier apply it with one click — nothing is ever auto-applied
-silently.
+any combination of categories (specific ones, or explicitly "all categories" —
+covering both a single-game-type deal and a shop-wide discount), with optional
+day-of-week / time-of-day / date-range / minimum-duration / minimum-game-count
+conditions, and one of three effects (extra free time, percent off, flat amount off).
+A new admin-only Offers Management view to create/edit/toggle them. On Daily Sales,
+when a session becomes eligible for an active offer, an inline prompt lets the cashier
+apply it with one click — nothing is ever auto-applied silently.
 
 **Explicitly out of scope** (confirmed with the user, each a candidate follow-up):
 - Bundle offers linking a session to cafe products (sub-project 9).
@@ -50,21 +51,37 @@ Rust commands → `sync.rs`'s `apply_offers` → Prisma model → `sync.service.
 
 Unlike `Rate` (exactly one row per category, upsert-only, no delete), an `Offer` is a
 genuine list — a category can have zero, one, or several active offers at once (e.g.
-Carrom could eventually have both a weekday time-discount and a game-count discount).
-So `Offer` follows the `Session`/`Customer`-style list pattern instead: `id` PK,
-create + update (via a nested-`Option` `OfferPatch` matching `SessionPatch`'s existing
-convention) + an `active` boolean toggle. No true delete/soft-delete in v1 — retiring
-an offer means switching `active` off, keeping the management list simple and every
-action reversible (fewer irreversible-feeling actions to worry about, matching the
-"less friction" ask). `updated_at`/`created_by`/`updated_by` follow the existing
-audit-trail columns pattern.
+Carrom could eventually have both a weekday time-discount and a game-count discount),
+and one offer can span several categories at once. So `Offer` follows the
+`Session`/`Customer`-style list pattern instead: `id` PK, create + update (via a
+nested-`Option` `OfferPatch` matching `SessionPatch`'s existing convention) + an
+`active` boolean toggle. No true delete/soft-delete in v1 — retiring an offer means
+switching `active` off, keeping the management list simple and every action reversible
+(fewer irreversible-feeling actions to worry about, matching the "less friction" ask).
+`updated_at`/`created_by`/`updated_by` follow the existing audit-trail columns
+pattern.
 
-Fields:
+**Category scope**, deliberately kept as plain columns on `Offer` rather than a new
+synced many-to-many join-table entity (which would mean a whole second 9-hop sync
+pipeline just for this) — the same "delimited text column" approach the `days`
+condition below already uses, since SQLite has no array type and this codebase
+already leans on that pattern:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `appliesToAllCategories` | `bool` | When `true`, the offer applies to every category, including ones added later — the common case for a shop-wide discount like "10% off Tuesdays," and avoids the trap of a fixed category list silently missing a category added after the offer was created. |
+| `categoryIds` | `String?` | Comma-separated category ids; only read when `appliesToAllCategories` is `false`. A single id covers the "8-Ball only" case; several ids cover "8-Ball + Snooker but not PlayStation." Ignored (may be left `null`) when `appliesToAllCategories` is `true`. |
+
+The Offers Management form surfaces this as one control: an "All categories" checkbox
+at the top, and — only when it's unchecked — a checklist of individual categories
+below it (`react-hook-form`'s `Controller` over a plain checkbox group, no new UI
+primitive needed).
+
+Remaining fields:
 
 | Field | Type | Meaning |
 |---|---|---|
 | `id` | `String` (PK) | |
-| `categoryId` | `String` (FK) | One category per offer — no join table. Two offers on the same category is just two rows. |
 | `name` | `String` | Shown in the management list and in the apply-prompt/session display, e.g. "Weekday Special". |
 | `active` | `bool` | On/off toggle. Inactive offers never appear as eligible. |
 | `days` | `String?` | Comma-separated weekday codes (`mon,tue,wed,thu,fri`); `null`/empty = every day. |
@@ -85,11 +102,15 @@ no date limit, no minimum) — conditions are opt-in restrictions, not required 
 automatically. Eligibility is checked client-side in `DailySalesView.tsx` (all the
 needed data — the session, its category, today's date's weekday, current wall-clock
 time, and today's sibling sessions for count-based conditions — is already loaded
-there via existing hooks; no new Rust "list eligible offers" endpoint is needed). When
-a session matches an active offer's conditions and no offer is currently applied, a
-small inline prompt appears on that session row (e.g. "🎉 Weekday Special available —
-Apply?"). One click calls the same `updateSession` mutation already used for every
-other session edit, with a patch setting `offerId`.
+there via existing hooks; no new Rust "list eligible offers" endpoint is needed). An
+offer is in scope for a session at all when the session's category is included in the
+offer's category set (`appliesToAllCategories`, or the session's `categoryId` appears
+in the offer's `categoryIds`); every other condition (day, time, date range, minimum
+duration/count) is then checked the same way regardless of how many categories the
+offer covers. When a session matches an active offer's conditions and no offer is
+currently applied, a small inline prompt appears on that session row (e.g. "🎉
+Weekday Special available — Apply?"). One click calls the same `updateSession`
+mutation already used for every other session edit, with a patch setting `offerId`.
 
 **Amount computation (Rust, `do_update_session`):** when a patch sets `offerId` to a
 real value, the session's `amount` is always **recomputed from scratch** — the
@@ -126,9 +147,12 @@ Effect math:
 ## Frame-count offers ("buy 3 games, 4th free")
 
 Counting is **per customer, per category, per day** — resets every day, matching how
-Daily Sales already scopes everything by date. This means a customer must be selected
-on a frame-billed session for a `minGameCount` offer on that category to ever become
-eligible (Cash/Card sessions don't require a customer today; this is unchanged except
+Daily Sales already scopes everything by date. If an offer's category scope spans
+several categories, the count is still taken per the session's own single category
+(e.g. an offer covering both Snooker and Carrom counts each separately — a customer's
+3rd Snooker game and 3rd Carrom game are tracked independently, not summed). This
+means a customer must be selected on a frame-billed session for a `minGameCount`
+offer on that category to ever become eligible (Cash/Card sessions don't require a customer today; this is unchanged except
 that the eligibility prompt simply won't appear until one is picked, for categories
 where a quantity offer is actually active — no change for categories/shops that don't
 use quantity offers).
@@ -145,9 +169,11 @@ repeating-cycle variant).
 New view, `apps/desktop/src/components/views/OfferManagementView.tsx`, following
 `RateManagementView.tsx`'s established conventions (react-hook-form + zod, `Field`/
 `FieldError` primitives, autosave-on-blur where it makes sense) but as a genuine
-create/list view (not upsert-by-category) since a category can have multiple offers:
-a list of existing offers (grouped or filterable by category) each with an
-active/inactive toggle and an edit form, plus a "+ New offer" action.
+create/list view (not upsert-by-category) since one category can have multiple
+offers and one offer can span multiple categories: a flat list of existing offers,
+each showing its name, category scope ("All categories" or a comma-joined list of
+category names), and an active/inactive toggle, plus a "+ New offer" action opening
+the create/edit form described above.
 
 **Permission:** a new `offerManagement` permission key, added to `ADMIN_ONLY_PERMISSIONS`
 in both `apps/desktop/src/lib/shared/constants/roles.ts` and

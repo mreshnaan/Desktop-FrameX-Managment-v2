@@ -16,7 +16,8 @@ export type PermissionKey =
   | 'backupRestore'
   | 'cafe'
   | 'productManagement'
-  | 'auditLog';
+  | 'auditLog'
+  | 'offerManagement';
 
 export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
   { key: 'dailySales', label: 'Daily Sales' },
@@ -33,6 +34,7 @@ export const PERMISSION_KEYS: { key: PermissionKey; label: string }[] = [
   { key: 'productManagement', label: 'Product & Stock Management' },
   { key: 'backupRestore', label: 'Backup & Restore' },
   { key: 'auditLog', label: 'Activity & Sync Logs' },
+  { key: 'offerManagement', label: 'Offer Management' },
 ];
 
 // 'cafe' is business-level (cashiers ring up sales); 'productManagement' and
@@ -41,7 +43,7 @@ const BUSINESS_PERMISSIONS: PermissionKey[] = [
   'dailySales', 'monthlySales', 'customers', 'creditManagement', 'expenses', 'monthlyExpenses', 'rateManagement', 'cafe',
 ];
 const ADMIN_ONLY_PERMISSIONS: PermissionKey[] = [
-  'userManagement', 'roleManagement', 'categoryManagement', 'productManagement', 'backupRestore', 'auditLog',
+  'userManagement', 'roleManagement', 'categoryManagement', 'productManagement', 'backupRestore', 'auditLog', 'offerManagement',
 ];
 
 // Seed data for the three protected system roles -- custom roles' permission

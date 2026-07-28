@@ -345,12 +345,12 @@ function formatDuration(mins: number): string {
   return `${h}h${m}m`;
 }
 
-function offerAppliesTo(offer: OfferRow, categoryId: string): boolean {
+export function offerAppliesTo(offer: OfferRow, categoryId: string): boolean {
   if (offer.appliesToAllCategories) return true;
   return (offer.categoryIds ?? '').split(',').includes(categoryId);
 }
 
-function isOfferActiveOn(offer: OfferRow, dateStr: string, timeStr: string): boolean {
+export function isOfferActiveOn(offer: OfferRow, dateStr: string, timeStr: string): boolean {
   if (offer.startDate && dateStr < offer.startDate) return false;
   if (offer.endDate && dateStr > offer.endDate) return false;
   if (offer.days) {

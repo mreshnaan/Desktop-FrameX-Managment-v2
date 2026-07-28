@@ -925,4 +925,22 @@ mod tests {
         let count = do_count_sessions_today(&pool, "2026-07-27".to_string(), category_id, customer.id).await.unwrap();
         assert_eq!(count, 3);
     }
+
+    #[tokio::test]
+    async fn count_sessions_today_excludes_soft_deleted_sessions() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_frame_station(&pool, 150).await;
+        let customer = crate::commands::customers::do_create_customer(&pool, "Priya".to_string(), "".to_string()).await.unwrap();
+
+        let mut last_id = String::new();
+        for _ in 0..3 {
+            let s = do_create_session(&pool, station_id.clone(), category_id.clone(), "frame".to_string(), "2026-07-27".to_string()).await.unwrap();
+            do_update_session(&pool, s.id.clone(), SessionPatch { customer_id: Some(Some(customer.id.clone())), ..Default::default() }).await.unwrap();
+            last_id = s.id;
+        }
+        do_delete_session(&pool, last_id).await.unwrap();
+
+        let count = do_count_sessions_today(&pool, "2026-07-27".to_string(), category_id, customer.id).await.unwrap();
+        assert_eq!(count, 2, "the soft-deleted session must not count toward the day's total");
+    }
 }

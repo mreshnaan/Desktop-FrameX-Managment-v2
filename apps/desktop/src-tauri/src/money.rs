@@ -130,4 +130,32 @@ mod tests {
         // calc_time_amount("13:00", "14:30", 400, 200) would give.
         assert_eq!(calc_time_amount_for_duration(90, 400, 200), 600);
     }
+
+    #[test]
+    fn percent_off_at_100_zeroes_the_amount() {
+        let (final_amount, discount) = apply_discount_effect(600, "percentOff", 100);
+        assert_eq!(final_amount, 0);
+        assert_eq!(discount, 600);
+    }
+
+    #[test]
+    fn percent_off_at_0_is_a_no_op() {
+        let (final_amount, discount) = apply_discount_effect(600, "percentOff", 0);
+        assert_eq!(final_amount, 600);
+        assert_eq!(discount, 0);
+    }
+
+    #[test]
+    fn flat_off_at_0_is_a_no_op() {
+        let (final_amount, discount) = apply_discount_effect(600, "flatOff", 0);
+        assert_eq!(final_amount, 600);
+        assert_eq!(discount, 0);
+    }
+
+    #[test]
+    fn billable_minutes_at_exactly_the_free_allowance_is_zero_not_negative() {
+        // effect_value equal to the actual duration -- the whole session is free,
+        // not an error and not a negative duration.
+        assert_eq!(billable_minutes_after_extra_time(30, 30), 0);
+    }
 }

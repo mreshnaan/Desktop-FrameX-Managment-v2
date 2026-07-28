@@ -248,4 +248,21 @@ mod tests {
         let updated = do_update_offer(&pool, created.id, input).await.unwrap();
         assert!(!updated.active);
     }
+
+    #[tokio::test]
+    async fn applies_to_all_categories_and_category_ids_can_both_be_stored_as_given() {
+        // The Rust layer doesn't validate/clear category_ids when
+        // applies_to_all_categories is true -- that's a frontend zod-level
+        // concern (the form only shows the checklist when "All categories" is
+        // unchecked). This test documents that the CRUD layer is a faithful
+        // store, not a validator, so a future reader doesn't mistake the
+        // absence of that clearing logic for a bug.
+        let pool = setup_test_db().await;
+        let mut input = sample_input("percentOff", 10);
+        input.applies_to_all_categories = true;
+        input.category_ids = Some("cat-1,cat-2".to_string());
+        let offer = do_create_offer(&pool, input).await.unwrap();
+        assert!(offer.applies_to_all_categories);
+        assert_eq!(offer.category_ids, Some("cat-1,cat-2".to_string()));
+    }
 }

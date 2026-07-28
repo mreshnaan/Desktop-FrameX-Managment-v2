@@ -15,6 +15,7 @@ import CreditManagementView from './components/views/CreditManagementView';
 import ExpensesView from './components/views/ExpensesView';
 import MonthlyExpensesView from './components/views/MonthlyExpensesView';
 import RateManagementView from './components/views/RateManagementView';
+import OfferManagementView from './components/views/OfferManagementView';
 import UserManagementView from './components/views/UserManagementView';
 import RoleManagementView from './components/views/RoleManagementView';
 import CategoryManagementView from './components/views/CategoryManagementView';
@@ -82,6 +83,11 @@ function AuthenticatedApp() {
         />
       )}
       {view === 'rateManagement' && <RateManagementView />}
+      {view === 'offerManagement' && (
+        <PermissionGate permissions={permissions} requires="offerManagement">
+          <OfferManagementView />
+        </PermissionGate>
+      )}
       {view === 'cafe' && (
         <PermissionGate permissions={permissions} requires="cafe">
           <CafeView />

@@ -12,6 +12,7 @@ import CustomersView from './components/views/CustomersView';
 import CreditManagementView from './components/views/CreditManagementView';
 import ExpensesView from './components/views/ExpensesView';
 import RateManagementView from './components/views/RateManagementView';
+import OfferManagementView from './components/views/OfferManagementView';
 import UserManagementView from './components/views/UserManagementView';
 import AuditLogView from './components/views/AuditLogView';
 import CafeView from './components/views/CafeView';
@@ -55,6 +56,14 @@ function AuthenticatedApp() {
       {view === 'creditManagement' && <CreditManagementView />}
       {view === 'expenses' && <ExpensesView date={date} onDateChange={setDate} />}
       {view === 'rateManagement' && <RateManagementView />}
+      {view === 'offerManagement' &&
+        (permissions && hasPermission(permissions, 'offerManagement') ? (
+          <OfferManagementView />
+        ) : (
+          <div className="p-4 text-sm text-muted-foreground">
+            Not authorized to view this page.
+          </div>
+        ))}
       {view === 'cafe' &&
         (permissions && hasPermission(permissions, 'cafe') ? (
           <CafeView />

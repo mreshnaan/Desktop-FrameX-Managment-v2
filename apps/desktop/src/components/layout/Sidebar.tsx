@@ -13,6 +13,7 @@ import {
   Coffee,
   Package,
   History,
+  Tag,
 } from 'lucide-react';
 import { hasPermission, type PermissionKey as ViewKey } from '@/lib/shared';
 import { useAuth } from '@/lib/auth/useAuth';
@@ -50,6 +51,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'expenses', label: 'Expenses', icon: Receipt },
   { key: 'monthlyExpenses', label: 'Monthly Expenses', icon: BarChart3 },
   { key: 'rateManagement', label: 'Rate Management', icon: Settings },
+  { key: 'offerManagement', label: 'Offers', icon: Tag },
   { key: 'cafe', label: 'Cafe', icon: Coffee },
   { key: 'userManagement', label: 'User Management', icon: ShieldCheck },
   { key: 'roleManagement', label: 'Roles', icon: KeyRound },

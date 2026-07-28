@@ -11,3 +11,4 @@ export * from './schemas/creditEntry.schema.js';
 export * from './schemas/rate.schema.js';
 export * from './schemas/auth.schema.js';
 export * from './schemas/sync.schema.js';
+export * from './schemas/offer.schema.js';

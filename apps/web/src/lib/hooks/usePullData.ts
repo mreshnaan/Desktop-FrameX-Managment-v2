@@ -58,6 +58,24 @@ export interface OrderItemRow {
   lineTotal: number;
 }
 
+export interface OfferRow {
+  id: string;
+  name: string;
+  active: boolean;
+  appliesToAllCategories: boolean;
+  categoryIds: string | null;
+  days: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  minDurationMinutes: number | null;
+  minGameCount: number | null;
+  effectType: 'extraTime' | 'percentOff' | 'flatOff';
+  effectValue: number;
+  updatedAt: string;
+}
+
 export interface PullResult {
   sessions: Session[];
   expenses: Expense[];
@@ -70,6 +88,7 @@ export interface PullResult {
   products: ProductRow[];
   orders: OrderRow[];
   orderItems: OrderItemRow[];
+  offers: OfferRow[];
 }
 
 // Web is a read-only dashboard -- no local storage, nothing here writes

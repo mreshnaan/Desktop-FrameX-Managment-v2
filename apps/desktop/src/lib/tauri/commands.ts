@@ -61,6 +61,40 @@ export function toRateRow(raw: RawRateRow): RateRow {
   };
 }
 
+export interface OfferRow {
+  id: string;
+  name: string;
+  active: boolean;
+  appliesToAllCategories: boolean;
+  categoryIds: string | null;
+  days: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  minDurationMinutes: number | null;
+  minGameCount: number | null;
+  effectType: 'extraTime' | 'percentOff' | 'flatOff';
+  effectValue: number;
+  updatedAt: string;
+}
+
+export interface OfferInput {
+  name: string;
+  active: boolean;
+  appliesToAllCategories: boolean;
+  categoryIds: string | null;
+  days: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  minDurationMinutes: number | null;
+  minGameCount: number | null;
+  effectType: 'extraTime' | 'percentOff' | 'flatOff';
+  effectValue: number;
+}
+
 export interface SessionPatch {
   start?: string;
   end?: string;
@@ -68,6 +102,7 @@ export interface SessionPatch {
   method?: string | null;
   customerId?: string | null;
   paidAt?: string | null;
+  offerId?: string | null;
 }
 
 export interface OutboxEntryRow {
@@ -245,6 +280,13 @@ export const commands = {
     invoke<OrderRow[]>('list_orders_between', { startUtc, endUtc }),
   listOrderItemsBetween: (startUtc: string, endUtc: string) =>
     invoke<OrderItemRow[]>('list_order_items_between', { startUtc, endUtc }),
+
+  // Offers
+  listOffers: () => invoke<OfferRow[]>('list_offers'),
+  createOffer: (input: OfferInput) => invoke<OfferRow>('create_offer', { input }),
+  updateOffer: (id: string, input: OfferInput) => invoke<OfferRow>('update_offer', { id, input }),
+  countSessionsToday: (date: string, categoryId: string, customerId: string) =>
+    invoke<number>('count_sessions_today', { date, categoryId, customerId }),
 
   // Reports
   getMonthlyReport: (startDate: string, endDate: string, startUtc: string, endUtc: string) =>

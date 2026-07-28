@@ -13,6 +13,8 @@ const sessionBaseSchema = z.object({
   deletedAt: z.string().datetime().nullable().optional(),
   metadata: z.string().nullable().optional(),
   paidAt: z.string().datetime().nullable().optional(),
+  offerId: z.string().uuid().nullable().optional(),
+  discountAmount: z.coerce.number().int().nullable().optional(),
 });
 
 const checkCreditCustomer = (data: {

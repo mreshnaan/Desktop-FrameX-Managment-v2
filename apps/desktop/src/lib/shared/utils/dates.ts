@@ -55,3 +55,9 @@ export function addMinutesToTime(time: string, minutes: number): string {
   const total = ((h * 60 + m + minutes) % dayMinutes + dayMinutes) % dayMinutes;
   return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 }
+
+// 0 = Sunday ... 6 = Saturday, matching Date.getDay() and this file's existing
+// WEEKDAYS constant ordering (see constants/categories.ts).
+export function dayOfWeek(dateStr: string): number {
+  return parseDate(dateStr).getDay();
+}

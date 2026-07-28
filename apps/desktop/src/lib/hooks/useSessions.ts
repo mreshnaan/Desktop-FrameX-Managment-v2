@@ -25,6 +25,7 @@ export function useSessions(date: string) {
         amount: input.patch.amount,
         method: input.patch.method,
         customerId: input.patch.customerId,
+        offerId: input.patch.offerId,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });

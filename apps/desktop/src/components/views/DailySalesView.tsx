@@ -358,8 +358,16 @@ function isOfferActiveOn(offer: OfferRow, dateStr: string, timeStr: string): boo
     const code = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][dayOfWeek(dateStr)];
     if (!codes.includes(code)) return false;
   }
-  if (offer.startTime && timeStr < offer.startTime) return false;
-  if (offer.endTime && timeStr > offer.endTime) return false;
+  if (offer.startTime && offer.endTime) {
+    const wraps = offer.startTime > offer.endTime;
+    const inWindow = wraps
+      ? (timeStr >= offer.startTime || timeStr <= offer.endTime)
+      : (timeStr >= offer.startTime && timeStr <= offer.endTime);
+    if (!inWindow) return false;
+  } else {
+    if (offer.startTime && timeStr < offer.startTime) return false;
+    if (offer.endTime && timeStr > offer.endTime) return false;
+  }
   return true;
 }
 
@@ -395,6 +403,7 @@ function SessionRow({
 
   useEffect(() => {
     if (session.offerId) { setEligibleOfferId(null); return; }
+    if (date !== todayStr()) { setEligibleOfferId(null); return; }
     let cancelled = false;
 
     async function checkEligibility() {
@@ -409,7 +418,7 @@ function SessionRow({
         if (offer.minGameCount != null) {
           if (billing !== 'frame' || !session.customerId) continue;
           const count = await commands.countSessionsToday(date, category.id, session.customerId);
-          if (count + 1 !== offer.minGameCount) continue;
+          if (count < offer.minGameCount) continue;
         }
         if (!cancelled) setEligibleOfferId(offer.id);
         return;

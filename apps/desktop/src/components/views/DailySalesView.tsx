@@ -418,7 +418,12 @@ function SessionRow({
         if (offer.minGameCount != null) {
           if (billing !== 'frame' || !session.customerId) continue;
           const count = await commands.countSessionsToday(date, category.id, session.customerId);
-          if (count < offer.minGameCount) continue;
+          // Per the design spec, eligibility triggers exactly once -- on the
+          // Nth session, not on the Nth and every session after it. `count`
+          // already includes this session (it's persisted with customerId
+          // set by the time this effect runs, since there's no optimistic
+          // update), so the Nth session is exactly where count == minGameCount.
+          if (count !== offer.minGameCount) continue;
         }
         if (!cancelled) setEligibleOfferId(offer.id);
         return;

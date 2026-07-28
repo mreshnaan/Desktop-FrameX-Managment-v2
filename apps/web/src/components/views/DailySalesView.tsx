@@ -3,6 +3,8 @@ import { formatCurrency, groupBy, type Session, type Customer, type Billing } fr
 import { useSessions } from '@/lib/hooks/useSessions';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useCategories, type CategoryWithStations, type CategoryStation } from '@/lib/hooks/useCategories';
+import { useOffers } from '@/lib/hooks/useOffers';
+import type { OfferRow } from '@/lib/hooks/usePullData';
 import DateStepper from '@/components/layout/DateStepper';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CollapsibleSection } from '@/components/ui/collapsible-section';
@@ -24,6 +26,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
   const { sessions, isLoading, isError } = useSessions(date);
   const { customers } = useCustomers();
   const { categories } = useCategories();
+  const { offers } = useOffers();
 
   const summary = useMemo<Summary>(() => {
     const totals: Summary = { total: 0, Cash: 0, Card: 0, Credit: 0, Pending: 0 };
@@ -60,6 +63,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
               category={category}
               sessionsByStationId={sessionsByStationId}
               customers={customers}
+              offers={offers}
             />
           ))}
         </div>
@@ -100,10 +104,12 @@ function CategoryGroup({
   category,
   sessionsByStationId,
   customers,
+  offers,
 }: {
   category: CategoryWithStations;
   sessionsByStationId: Map<string, Session[]>;
   customers: Customer[];
+  offers: OfferRow[];
 }) {
   const categoryTotal = useMemo(
     () => category.stations.reduce(
@@ -123,6 +129,7 @@ function CategoryGroup({
             station={station}
             sessions={sessionsByStationId.get(station.id) ?? []}
             customers={customers}
+            offers={offers}
           />
         ))}
       </div>
@@ -135,11 +142,13 @@ function StationCard({
   station,
   sessions,
   customers,
+  offers,
 }: {
   category: CategoryWithStations;
   station: CategoryStation;
   sessions: Session[];
   customers: Customer[];
+  offers: OfferRow[];
 }) {
   const subtotal = useMemo(() => sessions.reduce((sum, s) => sum + s.amount, 0), [sessions]);
 
@@ -160,6 +169,7 @@ function StationCard({
             frameNumber={index + 1}
             billing={category.billingType}
             customers={customers}
+            offers={offers}
           />
         ))}
       </CardContent>
@@ -172,15 +182,18 @@ function SessionRow({
   frameNumber,
   billing,
   customers,
+  offers,
 }: {
   session: Session;
   frameNumber: number;
   billing: Billing;
   customers: Customer[];
+  offers: OfferRow[];
 }) {
   const customerName = session.customerId
     ? (customers.find(c => c.id === session.customerId)?.name ?? 'Unknown customer')
     : null;
+  const offerName = (id: string) => offers.find(o => o.id === id)?.name ?? 'Offer';
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-2 text-sm" data-testid="session-row">
@@ -194,6 +207,11 @@ function SessionRow({
       <span className="font-medium">{formatCurrency(session.amount)}</span>
       <span className="text-muted-foreground">{session.method ?? 'Pending'}</span>
       {customerName && <span className="text-muted-foreground">{customerName}</span>}
+      {session.offerId && (
+        <span className="text-muted-foreground">
+          {offerName(session.offerId)} (−{formatCurrency(session.discountAmount ?? 0)})
+        </span>
+      )}
     </div>
   );
 }

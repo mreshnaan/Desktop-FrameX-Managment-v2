@@ -10,6 +10,7 @@ import {
   durationMinutes,
   groupBy,
   toFieldErrors,
+  dayOfWeek,
   type Session,
   type Customer,
   type Billing,
@@ -19,7 +20,8 @@ import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useCategories, type CategoryWithStations, type CategoryStation } from '@/lib/hooks/useCategories';
 import { useOrdersBetween, orderTimeOf } from '@/lib/hooks/useOrders';
 import { useProducts } from '@/lib/hooks/useProducts';
-import type { OrderRow, OrderItemRow } from '@/lib/tauri/commands';
+import { useOffers } from '@/lib/hooks/useOffers';
+import { commands, type OrderRow, type OrderItemRow, type OfferRow } from '@/lib/tauri/commands';
 import DateStepper from '@/components/layout/DateStepper';
 import { CustomerCombobox } from '@/components/CustomerCombobox';
 import { Button } from '@/components/ui/button';
@@ -58,6 +60,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
   const { categories } = useCategories();
   const { orders: dayOrders, orderItems } = useOrdersBetween(date, date);
   const { products } = useProducts();
+  const { offers } = useOffers();
 
   const cafe = useMemo(() => {
     const costByProductId = new Map(products.map(p => [p.id, p.cost ?? 0]));
@@ -114,6 +117,7 @@ export default function DailySalesView({ date, onDateChange }: DailySalesViewPro
               category={category}
               sessionsByStationId={sessionsByStationId}
               customers={customers}
+              offers={offers}
               addSession={addSession}
               updateSession={updateSession}
               deleteSession={deleteSession}
@@ -159,6 +163,7 @@ function CategoryGroup({
   category,
   sessionsByStationId,
   customers,
+  offers,
   addSession,
   updateSession,
   deleteSession,
@@ -167,6 +172,7 @@ function CategoryGroup({
   category: CategoryWithStations;
   sessionsByStationId: Map<string, Session[]>;
   customers: Customer[];
+  offers: OfferRow[];
   addSession: UseMutationResult<Session, Error, { stationId: string; categoryId: string; billingType: 'time' | 'frame' }>;
   updateSession: UseMutationResult<Session, Error, { id: string; patch: Partial<Session> }>;
   deleteSession: UseMutationResult<void, Error, string>;
@@ -190,6 +196,7 @@ function CategoryGroup({
             station={station}
             sessions={sessionsByStationId.get(station.id) ?? []}
             customers={customers}
+            offers={offers}
             addSession={addSession}
             updateSession={updateSession}
             deleteSession={deleteSession}
@@ -206,6 +213,7 @@ function StationCard({
   station,
   sessions,
   customers,
+  offers,
   addSession,
   updateSession,
   deleteSession,
@@ -215,6 +223,7 @@ function StationCard({
   station: CategoryStation;
   sessions: Session[];
   customers: Customer[];
+  offers: OfferRow[];
   addSession: UseMutationResult<Session, Error, { stationId: string; categoryId: string; billingType: 'time' | 'frame' }>;
   updateSession: UseMutationResult<Session, Error, { id: string; patch: Partial<Session> }>;
   deleteSession: UseMutationResult<void, Error, string>;
@@ -235,10 +244,12 @@ function StationCard({
           <SessionRow
             key={session.id}
             date={date}
+            category={category}
             session={session}
             frameNumber={index + 1}
             billing={category.billingType}
             customers={customers}
+            offers={offers}
             updateSession={(id, patch) => updateSession.mutateAsync({ id, patch }).then(() => undefined)}
             deleteSession={(id) => deleteSession.mutateAsync(id).then(() => undefined)}
           />
@@ -334,30 +345,81 @@ function formatDuration(mins: number): string {
   return `${h}h${m}m`;
 }
 
+function offerAppliesTo(offer: OfferRow, categoryId: string): boolean {
+  if (offer.appliesToAllCategories) return true;
+  return (offer.categoryIds ?? '').split(',').includes(categoryId);
+}
+
+function isOfferActiveOn(offer: OfferRow, dateStr: string, timeStr: string): boolean {
+  if (offer.startDate && dateStr < offer.startDate) return false;
+  if (offer.endDate && dateStr > offer.endDate) return false;
+  if (offer.days) {
+    const codes = offer.days.split(',');
+    const code = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][dayOfWeek(dateStr)];
+    if (!codes.includes(code)) return false;
+  }
+  if (offer.startTime && timeStr < offer.startTime) return false;
+  if (offer.endTime && timeStr > offer.endTime) return false;
+  return true;
+}
+
 function SessionRow({
   date,
+  category,
   session,
   frameNumber,
   billing,
   customers,
+  offers,
   updateSession,
   deleteSession,
 }: {
   date: string;
+  category: CategoryWithStations;
   session: Session;
   frameNumber: number;
   billing: Billing;
   customers: Customer[];
+  offers: OfferRow[];
   updateSession: UpdateSessionFn;
   deleteSession: DeleteSessionFn;
 }) {
   const [amountDraft, setAmountDraft] = useState(String(session.amount));
   const [error, setError] = useState<string | null>(null);
   const amountFocused = useRef(false);
+  const [eligibleOfferId, setEligibleOfferId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!amountFocused.current) setAmountDraft(String(session.amount));
   }, [session.amount]);
+
+  useEffect(() => {
+    if (session.offerId) { setEligibleOfferId(null); return; }
+    let cancelled = false;
+
+    async function checkEligibility() {
+      const candidates = offers.filter(o => o.active && offerAppliesTo(o, category.id));
+      const nowTime = billing === 'time' && session.start ? session.start : nowTimeStr();
+      for (const offer of candidates) {
+        if (!isOfferActiveOn(offer, date, nowTime)) continue;
+        if (offer.minDurationMinutes != null) {
+          if (billing !== 'time' || !session.start || !session.end) continue;
+          if (durationMinutes(session.start, session.end) < offer.minDurationMinutes) continue;
+        }
+        if (offer.minGameCount != null) {
+          if (billing !== 'frame' || !session.customerId) continue;
+          const count = await commands.countSessionsToday(date, category.id, session.customerId);
+          if (count + 1 !== offer.minGameCount) continue;
+        }
+        if (!cancelled) setEligibleOfferId(offer.id);
+        return;
+      }
+      if (!cancelled) setEligibleOfferId(null);
+    }
+
+    checkEligibility();
+    return () => { cancelled = true; };
+  }, [session.offerId, session.start, session.end, session.customerId, offers, category.id, billing, date]);
 
   async function commit(patch: Partial<Session>) {
     const merged: Session = { ...session, ...patch };
@@ -459,6 +521,22 @@ function SessionRow({
           <Trash2 className="text-destructive" />
         </Button>
       </div>
+      {eligibleOfferId && (
+        <div className="flex items-center gap-2 text-sm">
+          <span>🎉 {offers.find(o => o.id === eligibleOfferId)?.name} available —</span>
+          <Button type="button" size="xs" variant="link" className="h-auto p-0" onClick={() => commit({ offerId: eligibleOfferId })}>
+            Apply?
+          </Button>
+        </div>
+      )}
+      {session.offerId && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>{offers.find(o => o.id === session.offerId)?.name ?? 'Offer'} applied — saved {formatCurrency(session.discountAmount ?? 0)}</span>
+          <Button type="button" size="xs" variant="link" className="h-auto p-0" onClick={() => commit({ offerId: null })}>
+            Remove
+          </Button>
+        </div>
+      )}
       {billing === 'time' && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">QUICK:</span>

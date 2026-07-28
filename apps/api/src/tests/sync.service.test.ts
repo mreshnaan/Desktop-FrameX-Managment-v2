@@ -89,6 +89,33 @@ describe('applyPush', () => {
     }));
   });
 
+  it('upserts an offer, with no deletedAt handling since offers are never soft-deleted', async () => {
+    await applyPush([
+      {
+        table: 'offers',
+        op: 'upsert',
+        id: 'offer-1',
+        payload: {
+          name: 'Weekday Special',
+          active: true,
+          appliesToAllCategories: false,
+          categoryIds: 'cat-1',
+          days: 'mon,tue,wed,thu,fri',
+          effectType: 'extraTime',
+          effectValue: 30,
+        },
+        clientUpdatedAt: new Date().toISOString(),
+      },
+    ]);
+    expect(prisma.offer.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'offer-1' },
+      create: expect.objectContaining({ id: 'offer-1', name: 'Weekday Special', effectType: 'extraTime' }),
+      update: expect.objectContaining({ name: 'Weekday Special', effectType: 'extraTime' }),
+    }));
+    const call = (prisma.offer.upsert as any).mock.calls[0][0];
+    expect(call.update.deletedAt).toBeUndefined();
+  });
+
   it('upserts a category row', async () => {
     await applyPush([
       { table: 'categories', op: 'upsert', id: 'cat-1', payload: { name: '8-Ball', billingType: 'time' }, clientUpdatedAt: new Date().toISOString() },

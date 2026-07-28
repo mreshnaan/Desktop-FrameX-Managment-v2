@@ -1951,6 +1951,8 @@ what's already covered.
 - Modify: `apps/desktop/src-tauri/src/money.rs`
 - Modify: `apps/desktop/src-tauri/src/commands/offers.rs`
 - Modify: `apps/desktop/src-tauri/src/commands/sessions.rs`
+- Modify: `apps/desktop/src/components/views/DailySalesView.tsx`
+- Create: `apps/desktop/src/tests/offerEligibility.test.ts`
 
 - [ ] **Step 1: Add boundary tests to `money.rs`**
 
@@ -2047,6 +2049,132 @@ Expected: all prior tests plus these 7 new ones pass.
 ```bash
 git add apps/desktop/src-tauri/src/money.rs apps/desktop/src-tauri/src/commands/offers.rs apps/desktop/src-tauri/src/commands/sessions.rs
 git commit -m "test(desktop): boundary-condition coverage for offer effect math, storage, and counting"
+```
+
+- [ ] **Step 6: Export and test the frontend eligibility helpers**
+
+Added after Task 8's review cycle found `apps/desktop/src/components/views/DailySalesView.tsx`'s
+`offerAppliesTo`/`isOfferActiveOn` — the pure functions deciding whether the "Apply?"
+prompt shows — had zero test coverage, and one of Task 8's three review rounds was
+specifically about a bug in this exact area (a midnight-crossing time window that
+could never match). These functions have no React dependency; exporting them makes
+them directly testable, following this file's own `apps/desktop/src/tests/*.test.ts`
+convention (e.g. `rateRow.test.ts`, which imports a named export from its source
+module and asserts against it directly — no component rendering needed).
+
+**Files:**
+- Modify: `apps/desktop/src/components/views/DailySalesView.tsx` (add `export` to
+  both function declarations — no other change)
+- Create: `apps/desktop/src/tests/offerEligibility.test.ts`
+
+Add `export` to both functions (they're currently plain, unexported functions):
+
+```ts
+export function offerAppliesTo(offer: OfferRow, categoryId: string): boolean {
+```
+
+```ts
+export function isOfferActiveOn(offer: OfferRow, dateStr: string, timeStr: string): boolean {
+```
+
+Create `apps/desktop/src/tests/offerEligibility.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { offerAppliesTo, isOfferActiveOn } from '../components/views/DailySalesView';
+import type { OfferRow } from '../lib/tauri/commands';
+
+function baseOffer(overrides: Partial<OfferRow> = {}): OfferRow {
+  return {
+    id: 'offer-1',
+    name: 'Test Offer',
+    active: true,
+    appliesToAllCategories: false,
+    categoryIds: null,
+    days: null,
+    startTime: null,
+    endTime: null,
+    startDate: null,
+    endDate: null,
+    minDurationMinutes: null,
+    minGameCount: null,
+    effectType: 'extraTime',
+    effectValue: 30,
+    updatedAt: '2026-07-27T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('offerAppliesTo', () => {
+  it('matches any category when appliesToAllCategories is true', () => {
+    expect(offerAppliesTo(baseOffer({ appliesToAllCategories: true, categoryIds: null }), 'cat-xyz')).toBe(true);
+  });
+
+  it('matches only a listed category id when appliesToAllCategories is false', () => {
+    const offer = baseOffer({ appliesToAllCategories: false, categoryIds: 'cat-1,cat-2' });
+    expect(offerAppliesTo(offer, 'cat-1')).toBe(true);
+    expect(offerAppliesTo(offer, 'cat-3')).toBe(false);
+  });
+});
+
+describe('isOfferActiveOn', () => {
+  it('matches any time when startTime/endTime are both unset', () => {
+    expect(isOfferActiveOn(baseOffer(), '2026-07-27', '03:00')).toBe(true);
+  });
+
+  it('matches within a same-day (non-wrapping) window and rejects outside it', () => {
+    const offer = baseOffer({ startTime: '13:00', endTime: '18:00' });
+    expect(isOfferActiveOn(offer, '2026-07-27', '15:00')).toBe(true);
+    expect(isOfferActiveOn(offer, '2026-07-27', '20:00')).toBe(false);
+    expect(isOfferActiveOn(offer, '2026-07-27', '08:00')).toBe(false);
+  });
+
+  it('matches within a midnight-crossing window and rejects outside it', () => {
+    // The exact bug found and fixed during Task 8's review -- a naive
+    // string comparison ("23:00" >= "22:00" && "23:00" <= "02:00") always
+    // fails for the second half of a wrapping window.
+    const offer = baseOffer({ startTime: '22:00', endTime: '02:00' });
+    expect(isOfferActiveOn(offer, '2026-07-27', '23:00')).toBe(true);
+    expect(isOfferActiveOn(offer, '2026-07-27', '01:00')).toBe(true);
+    expect(isOfferActiveOn(offer, '2026-07-27', '12:00')).toBe(false);
+  });
+
+  it('respects an optional day-of-week restriction', () => {
+    // 2026-07-27 is a Monday.
+    const mondayOnly = baseOffer({ days: 'mon' });
+    const weekdaysOnly = baseOffer({ days: 'mon,tue,wed,thu,fri' });
+    const weekendOnly = baseOffer({ days: 'sat,sun' });
+    expect(isOfferActiveOn(mondayOnly, '2026-07-27', '12:00')).toBe(true);
+    expect(isOfferActiveOn(weekdaysOnly, '2026-07-27', '12:00')).toBe(true);
+    expect(isOfferActiveOn(weekendOnly, '2026-07-27', '12:00')).toBe(false);
+  });
+
+  it('respects an optional date range, inclusive on both ends', () => {
+    const offer = baseOffer({ startDate: '2026-07-20', endDate: '2026-07-27' });
+    expect(isOfferActiveOn(offer, '2026-07-20', '12:00')).toBe(true);
+    expect(isOfferActiveOn(offer, '2026-07-27', '12:00')).toBe(true);
+    expect(isOfferActiveOn(offer, '2026-07-28', '12:00')).toBe(false);
+    expect(isOfferActiveOn(offer, '2026-07-19', '12:00')).toBe(false);
+  });
+});
+```
+
+Confirm `DailySalesView.tsx` actually exports a type-compatible `OfferRow` import path
+(`../lib/tauri/commands`, per Task 6) during implementation, and adjust the import
+path if it's re-exported from a different module by the time this task runs.
+
+- [ ] **Step 7: Verify**
+
+Run: `pnpm --filter @cue-room/desktop exec tsc -b` and `cd apps/desktop && pnpm exec
+vitest run`
+Expected: no type errors; all existing desktop unit tests (13 as of Task 8) plus the
+6 new ones in `offerEligibility.test.ts` pass.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add apps/desktop/src/components/views/DailySalesView.tsx apps/desktop/src/tests/offerEligibility.test.ts
+git commit -m "test(desktop): unit coverage for offer eligibility helpers (category scope, time windows, day-of-week, date range)"
 ```
 
 **Note for the final whole-branch review**: the backend (`do_update_session`) never

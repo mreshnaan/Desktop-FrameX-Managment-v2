@@ -17,7 +17,7 @@ vi.mock('../lib/tauri/commands', () => ({
 }));
 
 const emptyPull = {
-  sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], categories: [], stations: [],
+  sessions: [], expenses: [], customers: [], creditEntries: [], rates: [], offers: [], categories: [], stations: [],
   productCategories: [], products: [], orders: [], orderItems: [], stockMovements: [],
   serverTime: '2026-07-24T00:00:00.000Z',
 };
@@ -67,7 +67,7 @@ describe('desktop syncEngine', () => {
     expect(deleteOutboxEntries).toHaveBeenCalledWith([1]);
   });
 
-  it('applies pulled rows across all seven tables via a single Rust call and advances the cursor', async () => {
+  it('applies pulled rows across all thirteen tables via a single Rust call and advances the cursor', async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (String(url).includes('/sync/push')) return new Response(JSON.stringify({ ok: true, failed: [] }), { status: 200 });
       return new Response(

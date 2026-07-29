@@ -861,6 +861,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_offer_is_cleared_automatically_when_it_is_deactivated() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 400, 200).await;
+        let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-27".to_string())
+            .await
+            .unwrap();
+        let with_time = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { start: Some("13:00".to_string()), end: Some("14:30".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        let offer = do_create_offer(&pool, crate::commands::offers::tests_helpers_offer_input_extra_time(30, None)).await.unwrap();
+        let with_offer = do_update_session(
+            &pool,
+            with_time.id,
+            SessionPatch { offer_id: Some(Some(offer.id.clone())), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(with_offer.amount, 400);
+
+        // Deactivate the offer, then edit the session's time again without
+        // resending offerId -- a deactivated offer must not survive
+        // re-application.
+        let mut deactivate_input = crate::commands::offers::tests_helpers_offer_input_extra_time(30, None);
+        deactivate_input.active = false;
+        crate::commands::offers::do_update_offer(&pool, offer.id.clone(), deactivate_input).await.unwrap();
+
+        let after_deactivation = do_update_session(
+            &pool,
+            with_offer.id,
+            SessionPatch { end: Some("15:00".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(after_deactivation.amount, 800, "2h at 400/hr with no offer applied");
+        assert_eq!(after_deactivation.discount_amount, None);
+        assert_eq!(after_deactivation.offer_id, None, "a deactivated offer must not survive re-application");
+    }
+
+    #[tokio::test]
+    async fn an_offer_is_cleared_automatically_when_its_category_scope_no_longer_matches() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 400, 200).await;
+        let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-27".to_string())
+            .await
+            .unwrap();
+        let with_time = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { start: Some("13:00".to_string()), end: Some("14:30".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        let offer = do_create_offer(&pool, crate::commands::offers::tests_helpers_offer_input_extra_time(30, None)).await.unwrap();
+        let with_offer = do_update_session(
+            &pool,
+            with_time.id,
+            SessionPatch { offer_id: Some(Some(offer.id.clone())), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(with_offer.amount, 400);
+
+        // Rescope the offer away from "all categories" to a category the
+        // session doesn't belong to, then edit the session's time again
+        // without resending offerId -- the offer no longer applies here.
+        let mut rescoped_input = crate::commands::offers::tests_helpers_offer_input_extra_time(30, None);
+        rescoped_input.applies_to_all_categories = false;
+        rescoped_input.category_ids = Some("some-other-category-id".to_string());
+        crate::commands::offers::do_update_offer(&pool, offer.id.clone(), rescoped_input).await.unwrap();
+
+        let after_rescope = do_update_session(
+            &pool,
+            with_offer.id,
+            SessionPatch { end: Some("15:00".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(after_rescope.amount, 800, "2h at 400/hr with no offer applied");
+        assert_eq!(after_rescope.discount_amount, None);
+        assert_eq!(after_rescope.offer_id, None, "an offer no longer scoped to this session's category must be cleared automatically");
+    }
+
+    #[tokio::test]
     async fn extra_time_offer_is_a_no_op_on_a_frame_billed_session() {
         let pool = setup_test_db().await;
         let (station_id, category_id) = seed_frame_station(&pool, 150).await;

@@ -21,9 +21,17 @@ type TxClient = Prisma.TransactionClient;
 
 // Builds the ActivityLog's one-line summary from the payload alone -- no
 // extra DB lookups.
-function summarize(table: OutboxEntry['table'], payload: Record<string, unknown>): string {
+function summarize(table: OutboxEntry['table'], payload: Record<string, unknown>, isDelete: boolean): string {
   const str = (v: unknown) => (typeof v === 'string' ? v : '');
   const num = (v: unknown) => (typeof v === 'number' ? v : 0);
+  if (isDelete) {
+    // A delete's payload is deliberately minimal (just {id, updatedBy} --
+    // see upsertOrSoftDelete's own comment), not a full row -- so name/date/
+    // amount fields below simply aren't there for a delete. Fall back to a
+    // generic, always-correct identifier instead of rendering blank/zeroed
+    // fields read from a payload that was never meant to carry them.
+    return `${table} record ${str(payload.id)}`;
+  }
   switch (table) {
     case 'categories':
       return `category "${str(payload.name)}"`;
@@ -72,23 +80,29 @@ const APPEND_ONLY_TABLES = new Set<OutboxEntry['table']>(['creditEntries', 'orde
 // per-model delegate types are individually too strict to unify here (same
 // reason the call sites below already cast through `unknown`); `any` keeps
 // this one helper honest about being a deliberately loose bridge.
+// Returns whether a write actually happened: true for every upsert, true for
+// a delete that found and updated a row, false for a delete that no-op'd on
+// a caught P2025 (row never pushed, or already gone) -- callers use this to
+// avoid logging a phantom ActivityLog entry for a delete that didn't do
+// anything.
 async function upsertOrSoftDelete(
   delegate: { upsert: (args: any) => Promise<unknown>; update: (args: any) => Promise<unknown> },
   id: string,
   isDelete: boolean,
   createData: unknown,
   updateData: unknown,
-): Promise<void> {
+): Promise<boolean> {
   if (isDelete) {
     try {
       await delegate.update({ where: { id }, data: updateData });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return;
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return false;
       throw err;
     }
-    return;
+    return true;
   }
   await delegate.upsert({ where: { id }, create: createData, update: updateData });
+  return true;
 }
 
 async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: Actor): Promise<void> {
@@ -108,10 +122,16 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
   const existed = await entryExists(tx, entry.table, entry.id);
   const action = isDelete ? 'delete' : existed ? 'update' : 'create';
 
+  // Whether this entry's switch case actually wrote something. Defaults to
+  // true for every table that doesn't call upsertOrSoftDelete (those always
+  // write); the tables that do call it overwrite this with its return value,
+  // since a delete of an already-gone/never-pushed row is a legitimate no-op.
+  let wrote = true;
+
   switch (entry.table) {
     case 'customers': {
       const base = { ...payload, updatedAt: now, deletedAt: isDelete ? now : null, ...stampUpdate };
-      await upsertOrSoftDelete(
+      wrote = await upsertOrSoftDelete(
         tx.customer,
         entry.id,
         isDelete,
@@ -122,7 +142,7 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
     }
     case 'sessions': {
       const base = { ...payload, updatedAt: now, deletedAt: isDelete ? now : null, ...stampUpdate };
-      await upsertOrSoftDelete(
+      wrote = await upsertOrSoftDelete(
         tx.session,
         entry.id,
         isDelete,
@@ -133,7 +153,7 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
     }
     case 'expenses': {
       const base = { ...payload, updatedAt: now, deletedAt: isDelete ? now : null, ...stampUpdate };
-      await upsertOrSoftDelete(
+      wrote = await upsertOrSoftDelete(
         tx.expense,
         entry.id,
         isDelete,
@@ -201,7 +221,7 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
     }
     case 'products': {
       const base = { ...payload, updatedAt: now, deletedAt: isDelete ? now : null, ...stampUpdate };
-      await upsertOrSoftDelete(
+      wrote = await upsertOrSoftDelete(
         tx.product,
         entry.id,
         isDelete,
@@ -212,7 +232,7 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
     }
     case 'orders': {
       const base = { ...payload, updatedAt: now, deletedAt: isDelete ? now : null };
-      await upsertOrSoftDelete(
+      wrote = await upsertOrSoftDelete(
         tx.order,
         entry.id,
         isDelete,
@@ -242,7 +262,7 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
     }
   }
 
-  if (actor) {
+  if (actor && wrote) {
     await tx.activityLog.create({
       data: {
         userId: actor.id,
@@ -250,7 +270,7 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
         action,
         tableName: entry.table,
         entityId: entry.id,
-        summary: `${action === 'create' ? 'Created' : action === 'delete' ? 'Deleted' : 'Updated'} ${summarize(entry.table, entry.payload)}`,
+        summary: `${action === 'create' ? 'Created' : action === 'delete' ? 'Deleted' : 'Updated'} ${summarize(entry.table, entry.payload, isDelete)}`,
       },
     });
   }

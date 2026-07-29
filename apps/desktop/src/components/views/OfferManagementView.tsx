@@ -113,6 +113,7 @@ function OfferForm({
     handleSubmit,
     control,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<OfferDraft>({
     resolver: zodResolver(OfferDraftSchema),
@@ -161,7 +162,14 @@ function OfferForm({
           <Field>
             <FieldLabel>Categories</FieldLabel>
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" {...register('appliesToAllCategories')} />
+              <input
+                type="checkbox"
+                {...register('appliesToAllCategories')}
+                onChange={e => {
+                  register('appliesToAllCategories').onChange(e);
+                  if (e.target.checked) setValue('categoryIds', null);
+                }}
+              />
               All categories
             </label>
             {!appliesToAllCategories && (

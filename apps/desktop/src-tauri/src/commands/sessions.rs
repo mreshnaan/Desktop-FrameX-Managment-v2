@@ -293,8 +293,8 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
         // `existing.amount`, which may already be a previously discounted
         // number -- risks compounding a discount on top of itself. So when no
         // trustworthy fresh base is available, this whole block is a no-op.
-        let category_row: Option<(String, Option<i64>, Option<i64>, Option<i64>)> = sqlx::query_as(
-            "SELECT c.billing_type, r.hour_rate, r.half_rate, r.frame_rate
+        let category_row: Option<(String, Option<i64>, Option<i64>, Option<i64>, String)> = sqlx::query_as(
+            "SELECT c.billing_type, r.hour_rate, r.half_rate, r.frame_rate, c.id
              FROM stations st JOIN categories c ON c.id = st.category_id
              LEFT JOIN rates r ON r.category_id = c.id
              WHERE st.id = ?",
@@ -334,21 +334,44 @@ pub(crate) async fn do_update_session(pool: &SqlitePool, id: String, patch: Sess
                     .map_err(|e| e.to_string())?;
 
                     if let Some(offer) = offer {
-                        let (final_amount, discount) = if offer.effect_type == "extraTime" && is_time_billed {
-                            let actual_minutes = duration_minutes(&existing.start, &existing.end);
-                            let billable = billable_minutes_after_extra_time(actual_minutes, offer.effect_value);
-                            let hour_rate = category_row.as_ref().and_then(|r| r.1).unwrap_or(0);
-                            let half_rate = category_row.as_ref().and_then(|r| r.2).unwrap_or(0);
-                            let discounted_base = calc_time_amount_for_duration(billable, hour_rate, half_rate);
-                            (discounted_base, (base_amount - discounted_base).max(0))
-                        } else if offer.effect_type == "extraTime" {
-                            // extraTime doesn't apply to a non-time-billed category -- a no-op.
-                            (base_amount, 0)
-                        } else {
-                            apply_discount_effect(base_amount, &offer.effect_type, offer.effect_value)
+                        // Re-validate the offer's own conditions against the (possibly
+                        // just-edited) session before blindly re-applying its effect --
+                        // an offer applied once must not survive a later edit that takes
+                        // the session out of its own eligibility window. Only the
+                        // conditions checkable with data already on hand here (active,
+                        // category scope, min_duration_minutes) are re-checked; days /
+                        // time-of-day / date-range re-validation is a separate follow-up.
+                        let category_id = category_row.as_ref().map(|r| r.4.as_str()).unwrap_or("");
+                        let category_matches = offer.applies_to_all_categories
+                            || offer.category_ids.as_deref().unwrap_or("").split(',').any(|c| c == category_id);
+                        let duration_ok = match offer.min_duration_minutes {
+                            Some(min) => is_time_billed && has_full_time_range
+                                && duration_minutes(&existing.start, &existing.end) >= min,
+                            None => true,
                         };
-                        existing.amount = final_amount;
-                        existing.discount_amount = Some(discount);
+                        let still_eligible = offer.active && category_matches && duration_ok;
+
+                        if !still_eligible {
+                            existing.amount = base_amount;
+                            existing.discount_amount = None;
+                            existing.offer_id = None;
+                        } else {
+                            let (final_amount, discount) = if offer.effect_type == "extraTime" && is_time_billed {
+                                let actual_minutes = duration_minutes(&existing.start, &existing.end);
+                                let billable = billable_minutes_after_extra_time(actual_minutes, offer.effect_value);
+                                let hour_rate = category_row.as_ref().and_then(|r| r.1).unwrap_or(0);
+                                let half_rate = category_row.as_ref().and_then(|r| r.2).unwrap_or(0);
+                                let discounted_base = calc_time_amount_for_duration(billable, hour_rate, half_rate);
+                                (discounted_base, (base_amount - discounted_base).max(0))
+                            } else if offer.effect_type == "extraTime" {
+                                // extraTime doesn't apply to a non-time-billed category -- a no-op.
+                                (base_amount, 0)
+                            } else {
+                                apply_discount_effect(base_amount, &offer.effect_type, offer.effect_value)
+                            };
+                            existing.amount = final_amount;
+                            existing.discount_amount = Some(discount);
+                        }
                     } else {
                         // Referenced offer no longer resolves -- fall back to
                         // the undiscounted base and clear the dangling reference.
@@ -794,6 +817,47 @@ mod tests {
         assert_eq!(extended.offer_id, Some(offer.id));
         // Fresh base for the full 2h range is 800; discounted is 600 -> discount 200.
         assert_eq!(extended.discount_amount, Some(200));
+    }
+
+    #[tokio::test]
+    async fn an_offer_is_cleared_automatically_when_a_later_edit_makes_it_ineligible() {
+        let pool = setup_test_db().await;
+        let (station_id, category_id) = seed_time_station(&pool, 400, 200).await;
+        let session = do_create_session(&pool, station_id, category_id, "time".to_string(), "2026-07-27".to_string())
+            .await
+            .unwrap();
+        let with_time = do_update_session(
+            &pool,
+            session.id,
+            SessionPatch { start: Some("13:00".to_string()), end: Some("14:30".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        let offer = do_create_offer(&pool, crate::commands::offers::tests_helpers_offer_input_extra_time(30, Some(90))).await.unwrap();
+        let with_offer = do_update_session(
+            &pool,
+            with_time.id,
+            SessionPatch { offer_id: Some(Some(offer.id.clone())), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(with_offer.amount, 400);
+        assert_eq!(with_offer.offer_id, Some(offer.id));
+
+        // Shorten the session below the offer's 90-minute minimum, without
+        // resending offerId -- the offer must be automatically cleared, not
+        // silently re-applied to a session that no longer qualifies.
+        let shortened = do_update_session(
+            &pool,
+            with_offer.id,
+            SessionPatch { end: Some("13:30".to_string()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(shortened.amount, 200, "30 min at 400/hr = 200, the plain undiscounted rate");
+        assert_eq!(shortened.discount_amount, None);
+        assert_eq!(shortened.offer_id, None, "an offer that no longer meets its own conditions must be cleared automatically");
     }
 
     #[tokio::test]

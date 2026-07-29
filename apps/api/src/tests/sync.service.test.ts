@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { applyPush, pullSince } from '../services/sync.service';
 import { prisma } from '../db';
+import { CURRENCY_SYMBOL } from '../shared/index';
 
 vi.mock('../db', () => {
   // "doesn't exist yet" by default -> every entry logs as a create unless a
@@ -84,6 +85,41 @@ describe('applyPush', () => {
     ]);
 
     expect(result.failed).toEqual([]);
+  });
+
+  it('does not write an ActivityLog entry for a delete that no-ops on an already-gone/never-pushed row', async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({ id: 'u1', name: 'Owner' } as any);
+    const notFoundError = new Prisma.PrismaClientKnownRequestError('Record not found', {
+      code: 'P2025',
+      clientVersion: 'test',
+    });
+    vi.mocked(prisma.customer.update).mockRejectedValueOnce(notFoundError);
+
+    await applyPush(
+      [{ table: 'customers', op: 'delete', id: 'never-existed', payload: { id: 'never-existed' }, clientUpdatedAt: new Date().toISOString() }],
+      'u1',
+    );
+
+    expect(prisma.activityLog.create).not.toHaveBeenCalled();
+  });
+
+  // Regression test: summarize() used to read name/date/amount fields off the
+  // payload unconditionally, but a delete's payload is deliberately minimal
+  // (just {id, updatedBy}) -- so every delete rendered a degenerate summary
+  // like `Deleted customer ""`. It must fall back to a generic identifier.
+  it('does not render blank/zeroed fields in the ActivityLog summary for a delete', async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({ id: 'u1', name: 'Owner' } as any);
+    vi.mocked(prisma.customer.findUnique).mockResolvedValueOnce({ id: 'c1' } as any); // row exists -> real delete, not a no-op
+
+    await applyPush(
+      [{ table: 'customers', op: 'delete', id: 'c1', payload: { id: 'c1' }, clientUpdatedAt: new Date().toISOString() }],
+      'u1',
+    );
+
+    const call = (prisma.activityLog.create as any).mock.calls[0][0];
+    expect(call.data.summary).not.toContain('""');
+    expect(call.data.summary).not.toContain(`${CURRENCY_SYMBOL}0`);
+    expect(call.data.summary).toContain('c1');
   });
 
   it('runs each entry in its own transaction', async () => {

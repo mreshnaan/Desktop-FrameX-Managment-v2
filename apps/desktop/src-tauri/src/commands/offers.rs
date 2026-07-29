@@ -57,7 +57,7 @@ pub(crate) async fn do_create_offer(pool: &SqlitePool, input: OfferInput) -> Res
     let offer = Offer {
         id: Uuid::new_v4().to_string(),
         name: input.name,
-        active: true,
+        active: input.active,
         applies_to_all_categories: input.applies_to_all_categories,
         category_ids: input.category_ids,
         days: input.days,
@@ -227,6 +227,15 @@ mod tests {
         assert!(offer.active);
         assert_eq!(offer.name, "Weekday Special");
         assert_eq!(offer.min_duration_minutes, Some(90));
+    }
+
+    #[tokio::test]
+    async fn create_respects_an_explicit_inactive_input() {
+        let pool = setup_test_db().await;
+        let mut input = sample_input("extraTime", 30);
+        input.active = false;
+        let offer = do_create_offer(&pool, input).await.unwrap();
+        assert!(!offer.active, "do_create_offer must honor input.active, not hardcode true");
     }
 
     #[tokio::test]

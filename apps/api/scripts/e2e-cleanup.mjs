@@ -48,6 +48,10 @@ async function main() {
   await prisma.productCategory.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
   await prisma.station.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
   await prisma.category.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
+  // offerId on Session is a plain string column too (no declared Prisma
+  // relation), so there's no FK ordering concern here -- deleting offers
+  // after sessions (already swept unconditionally above) is safe either way.
+  await prisma.offer.deleteMany({ where: { name: { startsWith: 'E2E ' } } });
   console.log('e2e cleanup complete');
 }
 

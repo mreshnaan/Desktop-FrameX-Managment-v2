@@ -146,6 +146,91 @@ describe('authenticated routes', () => {
     );
   });
 
+  // -------------------------------------------------------------------------
+  // POST /sync/push with op: 'delete'
+  //
+  // Regression coverage for the bug fixed in sync.service.ts's applyEntry():
+  // delete ops used to route through Prisma's upsert(), which validates the
+  // (deliberately minimal) delete payload as a `create` and always threw --
+  // so deletes pushed from the desktop app never actually reached the
+  // server. The existing unit test for this mocks Prisma entirely, which
+  // validates nothing about real Postgres/Prisma behavior; these two tests
+  // exercise the real HTTP route against a real database.
+  // -------------------------------------------------------------------------
+  it('a delete pushed via /sync/push soft-deletes the row, with no push failure', async () => {
+    const id = crypto.randomUUID();
+
+    // 1. Upsert a customer so it exists server-side, and confirm via pull
+    // that it is present and not soft-deleted (mirrors the "a pushed
+    // customer is retrievable via pull" test above).
+    const upsertRes = await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [{
+          table: 'customers', op: 'upsert', id,
+          payload: { id, name: 'E2E Delete Target', phone: '' },
+          clientUpdatedAt: new Date().toISOString(),
+        }],
+      }),
+    });
+    expect(upsertRes.status).toBe(200);
+    expect((await json<{ failed: unknown[] }>(upsertRes)).failed).toEqual([]);
+
+    const pullRes = await fetch(`${baseUrl}/sync/pull?since=2000-01-01T00:00:00.000Z`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const pulled = await json<{ customers: { id: string; deletedAt: string | null }[] }>(pullRes);
+    const pulledCustomer = pulled.customers.find(c => c.id === id);
+    expect(pulledCustomer).toBeDefined();
+    expect(pulledCustomer?.deletedAt).toBeNull();
+
+    // 2. Push a delete op for the same id, with the minimal payload shape
+    // the real Rust do_delete_customer sends -- just {id, updatedBy} (see
+    // apps/desktop/src-tauri/src/commands/customers.rs's
+    // `json!({ "id": id, "updatedBy": actor })`). Pre-fix, upsert() would
+    // reject this shape as an invalid `create` and land it in `failed`.
+    const deleteRes = await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [{
+          table: 'customers', op: 'delete', id,
+          payload: { id, updatedBy: null },
+          clientUpdatedAt: new Date().toISOString(),
+        }],
+      }),
+    });
+    expect(deleteRes.status).toBe(200);
+    expect((await json<{ failed: unknown[] }>(deleteRes)).failed).toEqual([]);
+
+    const row = await prisma.customer.findUniqueOrThrow({ where: { id } });
+    expect(row.deletedAt).not.toBeNull();
+
+    await prisma.customer.deleteMany({ where: { id } });
+  });
+
+  it('a delete pushed for an id never pushed as an upsert is a no-op, not a push failure', async () => {
+    const id = crypto.randomUUID();
+
+    const deleteRes = await fetch(`${baseUrl}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        entries: [{
+          table: 'customers', op: 'delete', id,
+          payload: { id, updatedBy: null },
+          clientUpdatedAt: new Date().toISOString(),
+        }],
+      }),
+    });
+    expect(deleteRes.status).toBe(200);
+    expect((await json<{ failed: unknown[] }>(deleteRes)).failed).toEqual([]);
+
+    const row = await prisma.customer.findUnique({ where: { id } });
+    expect(row).toBeNull();
+  });
+
   // GET /reports/customer-balances
   it('GET /reports/customer-balances returns a plain object keyed by customerId', async () => {
     const res = await fetch(`${baseUrl}/reports/customer-balances`, {

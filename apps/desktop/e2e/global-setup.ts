@@ -51,10 +51,14 @@ function wipeE2eAppData() {
 }
 
 export default async function globalSetup() {
-  // 1. Start the real apps/api server against local Postgres.
+  // 1. Build and start the real apps/api server against local Postgres.
+  // Always rebuild here -- a stale dist/ (e.g. from before a server-side
+  // fix) would otherwise silently run outdated server code during the e2e
+  // suite, which previously required a manual rebuild step to avoid.
+  execFileSync('pnpm', ['--filter', '@cue-room/api', 'build'], { cwd: REPO_ROOT, stdio: 'inherit', shell: true });
   const apiEntry = path.join(API_DIR, 'dist/server.js');
   if (!existsSync(apiEntry)) {
-    throw new Error(`${apiEntry} not found -- run "pnpm --filter @cue-room/api build" first`);
+    throw new Error(`${apiEntry} not found after "pnpm --filter @cue-room/api build"`);
   }
   const apiProcess: ChildProcess = spawn(process.execPath, [apiEntry], {
     cwd: API_DIR,

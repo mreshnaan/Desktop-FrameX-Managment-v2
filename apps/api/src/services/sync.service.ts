@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { CURRENCY_SYMBOL, type OutboxEntry } from '../shared/index';
 
@@ -57,6 +57,40 @@ function summarize(table: OutboxEntry['table'], payload: Record<string, unknown>
 // Append-only tables have no updatedBy column -- only createdBy is ever stamped.
 const APPEND_ONLY_TABLES = new Set<OutboxEntry['table']>(['creditEntries', 'orders', 'orderItems', 'stockMovements']);
 
+// A "delete" outbox entry carries a minimal payload (just id + updatedBy --
+// see e.g. do_delete_session in apps/desktop/src-tauri), not a full row.
+// upsert() validates the shape of its `create` argument up front, before it
+// even checks whether the row exists to decide create-vs-update -- so
+// passing that minimal payload as `create` always throws a "required field
+// missing" error, on every single retry, regardless of whether the row is
+// actually there. A soft-delete only ever needs to update, so route it
+// through update() instead; if the row was never pushed (or this is a
+// stale retry after it's already gone), update() throws Prisma's P2025
+// "record not found", which is a no-op here -- the desired end state
+// (deleted / absent) already holds.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma's
+// per-model delegate types are individually too strict to unify here (same
+// reason the call sites below already cast through `unknown`); `any` keeps
+// this one helper honest about being a deliberately loose bridge.
+async function upsertOrSoftDelete(
+  delegate: { upsert: (args: any) => Promise<unknown>; update: (args: any) => Promise<unknown> },
+  id: string,
+  isDelete: boolean,
+  createData: unknown,
+  updateData: unknown,
+): Promise<void> {
+  if (isDelete) {
+    try {
+      await delegate.update({ where: { id }, data: updateData });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return;
+      throw err;
+    }
+    return;
+  }
+  await delegate.upsert({ where: { id }, create: createData, update: updateData });
+}
+
 async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: Actor): Promise<void> {
   const isDelete = entry.op === 'delete';
   const stampCreate = actor
@@ -77,29 +111,35 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
   switch (entry.table) {
     case 'customers': {
       const base = { ...payload, updatedAt: now, deletedAt: isDelete ? now : null, ...stampUpdate };
-      await tx.customer.upsert({
-        where: { id: entry.id },
-        create: { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.CustomerUncheckedCreateInput,
-        update: base as unknown as Prisma.CustomerUncheckedUpdateInput,
-      });
+      await upsertOrSoftDelete(
+        tx.customer,
+        entry.id,
+        isDelete,
+        { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.CustomerUncheckedCreateInput,
+        base as unknown as Prisma.CustomerUncheckedUpdateInput,
+      );
       break;
     }
     case 'sessions': {
       const base = { ...payload, updatedAt: now, deletedAt: isDelete ? now : null, ...stampUpdate };
-      await tx.session.upsert({
-        where: { id: entry.id },
-        create: { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.SessionUncheckedCreateInput,
-        update: base as unknown as Prisma.SessionUncheckedUpdateInput,
-      });
+      await upsertOrSoftDelete(
+        tx.session,
+        entry.id,
+        isDelete,
+        { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.SessionUncheckedCreateInput,
+        base as unknown as Prisma.SessionUncheckedUpdateInput,
+      );
       break;
     }
     case 'expenses': {
       const base = { ...payload, updatedAt: now, deletedAt: isDelete ? now : null, ...stampUpdate };
-      await tx.expense.upsert({
-        where: { id: entry.id },
-        create: { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.ExpenseUncheckedCreateInput,
-        update: base as unknown as Prisma.ExpenseUncheckedUpdateInput,
-      });
+      await upsertOrSoftDelete(
+        tx.expense,
+        entry.id,
+        isDelete,
+        { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.ExpenseUncheckedCreateInput,
+        base as unknown as Prisma.ExpenseUncheckedUpdateInput,
+      );
       break;
     }
     case 'creditEntries': {
@@ -161,20 +201,24 @@ async function applyEntry(tx: TxClient, entry: OutboxEntry, now: Date, actor?: A
     }
     case 'products': {
       const base = { ...payload, updatedAt: now, deletedAt: isDelete ? now : null, ...stampUpdate };
-      await tx.product.upsert({
-        where: { id: entry.id },
-        create: { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.ProductUncheckedCreateInput,
-        update: base as unknown as Prisma.ProductUncheckedUpdateInput,
-      });
+      await upsertOrSoftDelete(
+        tx.product,
+        entry.id,
+        isDelete,
+        { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.ProductUncheckedCreateInput,
+        base as unknown as Prisma.ProductUncheckedUpdateInput,
+      );
       break;
     }
     case 'orders': {
       const base = { ...payload, updatedAt: now, deletedAt: isDelete ? now : null };
-      await tx.order.upsert({
-        where: { id: entry.id },
-        create: { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.OrderUncheckedCreateInput,
-        update: base as unknown as Prisma.OrderUncheckedUpdateInput,
-      });
+      await upsertOrSoftDelete(
+        tx.order,
+        entry.id,
+        isDelete,
+        { id: entry.id, ...base, ...stampCreate } as unknown as Prisma.OrderUncheckedCreateInput,
+        base as unknown as Prisma.OrderUncheckedUpdateInput,
+      );
       break;
     }
     case 'orderItems': {

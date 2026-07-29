@@ -153,8 +153,8 @@ function OfferForm({
       <CardContent>
         <FieldGroup>
           <Field>
-            <FieldLabel>Name</FieldLabel>
-            <Input {...register('name')} aria-invalid={!!toFieldErrors(errors.name)} />
+            <FieldLabel htmlFor="offer-name">Name</FieldLabel>
+            <Input id="offer-name" {...register('name')} aria-invalid={!!toFieldErrors(errors.name)} />
             <FieldError errors={toFieldErrors(errors.name)} />
           </Field>
 
@@ -234,13 +234,13 @@ function OfferForm({
           </Field>
 
           <Field>
-            <FieldLabel>Minimum duration (minutes, time-billed categories)</FieldLabel>
-            <Input type="number" {...register('minDurationMinutes')} />
+            <FieldLabel htmlFor="offer-min-duration">Minimum duration (minutes, time-billed categories)</FieldLabel>
+            <Input id="offer-min-duration" type="number" {...register('minDurationMinutes')} />
           </Field>
 
           <Field>
-            <FieldLabel>Minimum game count (frame-billed categories)</FieldLabel>
-            <Input type="number" {...register('minGameCount')} />
+            <FieldLabel htmlFor="offer-min-game-count">Minimum game count (frame-billed categories)</FieldLabel>
+            <Input id="offer-min-game-count" type="number" {...register('minGameCount')} />
           </Field>
 
           <Field>

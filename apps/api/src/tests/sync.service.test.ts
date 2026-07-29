@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { applyPush, pullSince } from '../services/sync.service';
 import { prisma } from '../db';
 
 vi.mock('../db', () => {
   // "doesn't exist yet" by default -> every entry logs as a create unless a
   // test overrides its own table's findUnique for that one call.
-  const table = () => ({ upsert: vi.fn(), findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) });
+  const table = () => ({
+    upsert: vi.fn(),
+    update: vi.fn(),
+    findUnique: vi.fn().mockResolvedValue(null),
+    findMany: vi.fn().mockResolvedValue([]),
+  });
   const mockPrisma: any = {
     session: table(),
     expense: table(),
@@ -48,8 +54,36 @@ describe('applyPush', () => {
 
   it('soft-deletes by setting deletedAt instead of removing the row', async () => {
     await applyPush([{ table: 'customers', op: 'delete', id: 'c1', payload: {}, clientUpdatedAt: new Date().toISOString() }]);
-    const call = (prisma.customer.upsert as any).mock.calls[0][0];
-    expect(call.update.deletedAt).toBeInstanceOf(Date);
+    const call = (prisma.customer.update as any).mock.calls[0][0];
+    expect(call.data.deletedAt).toBeInstanceOf(Date);
+  });
+
+  // Regression test: a "delete" outbox entry's payload is minimal (just id
+  // + updatedBy -- see e.g. do_delete_session in apps/desktop/src-tauri),
+  // never a full row. upsert() validates its `create` argument's shape up
+  // front, before it even checks whether the row exists to decide
+  // create-vs-update -- so routing a delete through upsert() means the
+  // incomplete payload always fails "required field missing" validation,
+  // on every single retry, even when the row genuinely exists server-side.
+  // A delete must go through update(), never upsert().
+  it('routes a delete through update(), never upsert() -- upsert would validate the minimal delete payload as a doomed create', async () => {
+    await applyPush([{ table: 'customers', op: 'delete', id: 'c1', payload: { id: 'c1' }, clientUpdatedAt: new Date().toISOString() }]);
+    expect(prisma.customer.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'c1' } }));
+    expect(prisma.customer.upsert).not.toHaveBeenCalled();
+  });
+
+  it('treats deleting a row that was never pushed (or is already gone) as a no-op, not a failure', async () => {
+    const notFoundError = new Prisma.PrismaClientKnownRequestError('Record not found', {
+      code: 'P2025',
+      clientVersion: 'test',
+    });
+    vi.mocked(prisma.customer.update).mockRejectedValueOnce(notFoundError);
+
+    const result = await applyPush([
+      { table: 'customers', op: 'delete', id: 'never-existed', payload: { id: 'never-existed' }, clientUpdatedAt: new Date().toISOString() },
+    ]);
+
+    expect(result.failed).toEqual([]);
   });
 
   it('runs each entry in its own transaction', async () => {

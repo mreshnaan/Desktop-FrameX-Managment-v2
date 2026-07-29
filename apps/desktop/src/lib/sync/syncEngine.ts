@@ -7,7 +7,7 @@ const CURSOR_KEY = 'cue-room-desktop-sync-cursor';
 // strictly after every table it references (categories/stations first;
 // orderItems/stockMovements last), or a fresh install's bootstrap pull fails.
 const TABLES = [
-  'categories', 'stations', 'rates',
+  'categories', 'stations', 'rates', 'offers',
   'customers', 'sessions', 'expenses', 'creditEntries',
   'productCategories', 'products', 'orders', 'orderItems', 'stockMovements',
 ] as const;
@@ -18,6 +18,7 @@ interface PullResult {
   customers: unknown[];
   creditEntries: unknown[];
   rates: unknown[];
+  offers: unknown[];
   categories: unknown[];
   stations: unknown[];
   productCategories: unknown[];

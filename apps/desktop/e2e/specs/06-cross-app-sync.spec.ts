@@ -3,7 +3,7 @@ import { connectToApp, connectToWeb, login, loginWeb, navigateTo } from '../help
 import { branding } from '../../src/config/branding';
 
 // The only spec proving desktop <-> web interop through the real api +
-// Postgres. Must run before 10-backup-restore (which kills the desktop app).
+// Postgres. Must run before 11-backup-restore (which kills the desktop app).
 //
 // Only webPage is reloaded to force a sync pull. desktopPage is never
 // reloaded -- its auth rehydration does a real network call that can
